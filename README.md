@@ -6,6 +6,7 @@ A team standup tracker with Google Sign-In, persistent history via Firebase, dep
 
 ## Step 1 — Set up Firebase (5 minutes)
 
+
 1. Go to **https://console.firebase.google.com**
 2. Click **"Add project"** → name it `teampulse` → click through setup
 3. Once inside, click **"Firestore Database"** in the left sidebar
