@@ -47,7 +47,7 @@ export default function AnnualReport({ members }) {
         : `${MONTHS_SHORT[i]}: no data`
       ).join("\n");
 
-      const proxyUrl = process.env.REACT_APP_AI_PROXY_URL || "https://YOUR-PROXY.vercel.app/api/chat";
+      const proxyUrl = "https://teampulse-api-pied.vercel.app/api/chat";
       const res = await fetch(proxyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
