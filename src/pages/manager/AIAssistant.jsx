@@ -90,12 +90,12 @@ export default function AIAssistant({ members }) {
       const system = `You are an intelligent assistant for a team manager using TeamPulse — a daily standup tracker. You have access to real-time team data from the last 30 days. Answer questions about team member updates, tasks, clients, blockers, and bandwidth. Be concise, factual, and helpful. Today is ${TODAY}. Format responses clearly — use bullet points where helpful.\n\nCurrent team data:\n\n${context}`;
       const reply = await callAI([...history, { role: "user", content: text }], system);
       setConversations(prev => prev.map(c =>
-        c.id === activeConv ? { ...c, messages: [...c.messages, userMsg, { role: "assistant", content: reply }] } : c
+        c.id === activeConv ? { ...c, messages: [...c.messages, { role: "assistant", content: reply }] } : c
       ));
     } catch (e) {
       console.error("AI error:", e);
       setConversations(prev => prev.map(c =>
-        c.id === activeConv ? { ...c, messages: [...c.messages, userMsg, { role: "assistant", content: `Error: ${e.message || "Failed to get a response. Please try again."}` }] } : c
+        c.id === activeConv ? { ...c, messages: [...c.messages, { role: "assistant", content: `Error: ${e.message || "Failed to get a response. Please try again."}` }] } : c
       ));
     }
     setLoading(false);
