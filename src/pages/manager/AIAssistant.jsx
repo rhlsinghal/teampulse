@@ -4,7 +4,7 @@ import { BANDWIDTH } from "../../utils/constants";
 import { TODAY } from "../../utils/dates";
 import { Spinner } from "../../components/index.jsx";
 
-const AI_PROXY_URL = process.env.REACT_APP_AI_PROXY_URL || "https://YOUR-PROXY.vercel.app/api/chat";
+const AI_PROXY_URL = "https://teampulse-api-pied.vercel.app/api/chat";
 
 const SUGGESTED = [
   "Who has blockers today?",
