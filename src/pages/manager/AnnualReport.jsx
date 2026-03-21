@@ -47,7 +47,8 @@ export default function AnnualReport({ members }) {
         : `${MONTHS_SHORT[i]}: no data`
       ).join("\n");
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const proxyUrl = process.env.REACT_APP_AI_PROXY_URL || "https://YOUR-PROXY.vercel.app/api/chat";
+      const res = await fetch(proxyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
