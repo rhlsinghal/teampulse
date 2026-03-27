@@ -8,11 +8,12 @@ import { doc, getDoc } from "firebase/firestore";
 
 export default function TeamOverview({ members, onViewProfile }) {
   const [latest,  setLatest]  = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [slackSending, setSlackSending] = useState(false);
 
   useEffect(() => {
-    if (!members.length) return;
+    if (!members.length) { setLoading(false); return; }
+    setLoading(true);
     loadAllMembersLatest(members.map(m => m.name)).then(res => {
       setLatest(res);
       setLoading(false);
@@ -20,6 +21,15 @@ export default function TeamOverview({ members, onViewProfile }) {
   }, [members]);
 
   if (loading) return <div className="main-content"><Loading /></div>;
+
+  if (!members.length) return (
+    <div className="main-content">
+      <div style={{ textAlign: "center", padding: "60px 24px", color: "var(--muted)" }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>👥</div>
+        <div style={{ fontSize: 13, lineHeight: 1.8 }}>No team members yet.<br />Go to <strong>Allowed Users</strong> to invite your team.</div>
+      </div>
+    </div>
+  );
 
   const submittedToday = members.filter(m => latest[m.name]?.date === TODAY);
   const notSubmitted   = members.filter(m => latest[m.name]?.date !== TODAY);

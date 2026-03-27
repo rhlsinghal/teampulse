@@ -12,7 +12,7 @@ export default function Blockers({ members }) {
   const [filter,      setFilter]      = useState("active"); // "active" | "all"
 
   useEffect(() => {
-    if (!members.length) return;
+    if (!members.length) { setLoading(false); return; }
     // Load last 60 days to find blockers
     const start = new Date();
     start.setDate(start.getDate() - 60);
