@@ -49,11 +49,14 @@ export default function TeamOverview({ members, onViewProfile }) {
       const res = await fetch("https://teampulse-api-pied.vercel.app/api/slack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ members: notSubmitted.map(m => m.name) }),
+        body: JSON.stringify({ members: notSubmitted.map(m => ({ name: m.name, email: m.email })) }),
       });
       const data = await res.json();
       if (data.success) {
-        alert(`Slack reminder sent to ${data.reminded} team member${data.reminded > 1 ? "s" : ""} successfully!`);
+        const msg = data.namedOnly > 0
+          ? `Reminder sent! ${data.mentioned} member${data.mentioned !== 1 ? "s" : ""} @mentioned, ${data.namedOnly} listed by name (email not found in Slack).`
+          : `Reminder sent! ${data.reminded} member${data.reminded !== 1 ? "s" : ""} @mentioned successfully.`;
+        alert(msg);
       } else {
         alert(`Failed to send reminder: ${data.error}`);
       }
