@@ -10,6 +10,9 @@ export default function TeamOverview({ members, onViewProfile }) {
   const [latest,  setLatest]  = useState({});
   const [loading, setLoading] = useState(false);
   const [slackSending, setSlackSending] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  const reload = () => setTick(t => t + 1);
 
   useEffect(() => {
     if (!members.length) { setLoading(false); return; }
@@ -18,7 +21,7 @@ export default function TeamOverview({ members, onViewProfile }) {
       setLatest(res);
       setLoading(false);
     });
-  }, [members]);
+  }, [members, tick]);
 
   if (loading) return <div className="main-content"><Loading /></div>;
 
@@ -57,6 +60,7 @@ export default function TeamOverview({ members, onViewProfile }) {
           <div className="text-sm text-muted">{fmt(TODAY)} · {members.length} team members</div>
         </div>
         <div className="flex gap-8">
+          <button className="btn btn-ghost" onClick={reload}>↺ Refresh</button>
           {notSubmitted.length > 0 && (
             <button className="btn btn-green" onClick={sendSlackReminder} disabled={slackSending}>
               {slackSending ? "Sending..." : `💬 Send reminder (${notSubmitted.length})`}
