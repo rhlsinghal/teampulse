@@ -236,7 +236,7 @@ export default function App() {
       const snap = await getDocs(collection(db, "allowedUsers"));
       const list = snap.docs
         .map(d => ({ name: d.data().name, email: d.data().email, role: d.data().role }))
-        .filter(u => u.name)
+        .filter(u => u.name && u.role !== "manager")
         .sort((a, b) => a.name.localeCompare(b.name));
       setMembers(list);
     } catch(e) {
