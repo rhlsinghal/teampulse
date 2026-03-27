@@ -43,13 +43,24 @@ export default function TeamOverview({ members, onViewProfile }) {
   const avgBwLabel = avgBw ? BANDWIDTH[avgBw]?.label : "—";
 
   const sendSlackReminder = async () => {
+    if (!notSubmitted.length) return;
     setSlackSending(true);
-    // In production: call a cloud function or GitHub Action webhook
-    // For now: show which members would be pinged
-    setTimeout(() => {
-      setSlackSending(false);
-      alert(`Slack reminders would be sent to:\n${notSubmitted.map(m => m.name).join("\n")}\n\n(Connect your Slack webhook in settings to enable this)`);
-    }, 1000);
+    try {
+      const res = await fetch("https://teampulse-api-pied.vercel.app/api/slack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ members: notSubmitted.map(m => m.name) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Slack reminder sent to ${data.reminded} team member${data.reminded > 1 ? "s" : ""} successfully!`);
+      } else {
+        alert(`Failed to send reminder: ${data.error}`);
+      }
+    } catch (e) {
+      alert("Failed to send Slack reminder. Please check your connection.");
+    }
+    setSlackSending(false);
   };
 
   return (
