@@ -136,11 +136,11 @@ export function ManagerTabs({ page, onChange }) {
   const tabs = [
     { key: "overview",  label: "Team overview"    },
     { key: "blockers",  label: "Blockers"         },
-    { key: "sprint",    label: "Sprint report"    },
     { key: "annual",    label: "Annual reports"   },
     { key: "monthly",   label: "Monthly reports"  },
     { key: "ai",        label: "AI assistant"     },
     { key: "users",     label: "Allowed users"    },
+    { key: "sprint",    label: "iDerive Monthly report"    },
   ];
   return (
     <div className="topnav-tabs">

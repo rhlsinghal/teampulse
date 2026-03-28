@@ -64,7 +64,7 @@ export default function SprintReport() {
       {/* Header */}
       <div className="flex justify-between items-start mb-16">
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>Sprint report — iDerive</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>iDerive Monthly report</div>
           <div className="text-sm text-muted">
             Pulls live data from ClickUp — sprint tasks, bug tracking, carry-overs · DT team only
           </div>
