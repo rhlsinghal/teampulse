@@ -90,6 +90,7 @@ export default function SprintReport() {
       } else {
         setHtml(data.html);
         setMeta({ sprints:data.sprints, bugs:data.bugs, month:data.month, label:filterLabel(), sprintNames:data.sprintNames });
+        setDebug(data.debug || null);
       }
     } catch(e){
       setError("Failed to connect to the proxy. Check your Vercel deployment.");
@@ -101,7 +102,7 @@ export default function SprintReport() {
   const getIframeHtml = () => new Promise((resolve) => {
     try {
       const iframe = document.querySelector("iframe[title='iDerive Sprint Report']");
-      if (!iframe) { resolve(html); return; }
+      if (!iframe?.contentWindow) { resolve(html); return; }
       const handler = (e) => {
         if (e.data?.type === "teampulse-html") {
           window.removeEventListener("message", handler);
@@ -109,9 +110,15 @@ export default function SprintReport() {
         }
       };
       window.addEventListener("message", handler);
-      iframe.contentWindow.postMessage({ type: "teampulse-get-html" }, "*");
-      // Timeout fallback after 1s
-      setTimeout(() => { window.removeEventListener("message", handler); resolve(html); }, 1000);
+      // Small delay to ensure iframe JS has initialised
+      setTimeout(() => {
+        iframe.contentWindow.postMessage({ type: "teampulse-get-html" }, "*");
+      }, 300);
+      // Timeout fallback after 3s
+      setTimeout(() => {
+        window.removeEventListener("message", handler);
+        resolve(html);
+      }, 3000);
     } catch(e) { resolve(html); }
   });
 
@@ -283,6 +290,21 @@ export default function SprintReport() {
           <span className="badge badge-green">{meta.sprints} sprint{meta.sprints!==1?"s":""} loaded</span>
           <span className="badge badge-red">{meta.bugs} DT bug{meta.bugs!==1?"s":""}</span>
           <span className="badge badge-gray">completed sprints only</span>
+        </div>
+      )}
+
+      {/* ── Debug panel ── */}
+      {debug && (
+        <div style={{marginBottom:12,padding:"10px 14px",background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:8,fontSize:11,fontFamily:"monospace"}}>
+          <div style={{fontWeight:500,marginBottom:6,fontSize:12}}>Debug — ClickUp response</div>
+          {debug.map(s=>(
+            <div key={s.label} style={{marginBottom:8,paddingBottom:8,borderBottom:"0.5px solid var(--border)"}}>
+              <strong>{s.label}</strong> — totalRaw:{s.totalRaw} · totalDT:{s.totalDt} · done:{s.done} · open:{s.open}<br/>
+              startDate raw: {s.startDate} ({s.startFmt})<br/>
+              dueDate raw: {s.dueDate} ({s.dueFmt})<br/>
+              sample statuses: {s.sampleStatuses?.join(", ")}
+            </div>
+          ))}
         </div>
       )}
 
