@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Spinner } from "../../components/index.jsx";
 
 const CLICKUP_PROXY = "https://teampulse-api-pied.vercel.app/api/clickup";
@@ -34,6 +34,7 @@ export default function SprintReport() {
   const [meta,        setMeta]        = useState(null);
   const [error,       setError]       = useState(null);
   const [copied,      setCopied]      = useState(false);
+  const reportRef = useRef(null);
 
   // ── Parse sprint number input ──────────────────────────────────────────────
   const parseSprintNums = (input) => {
@@ -103,59 +104,83 @@ export default function SprintReport() {
     setLoading(false);
   };
 
-  // ── Get live HTML from iframe via postMessage ──────────────────────────────
-  const getIframeHtml = () => new Promise((resolve) => {
-    try {
-      const iframe = document.querySelector("iframe[title='iDerive Sprint Report']");
-      if (!iframe?.contentWindow) { resolve(html); return; }
-      const handler = (e) => {
-        if (e.data?.type === "teampulse-html") {
-          window.removeEventListener("message", handler);
-          resolve(e.data.html || html);
+  // ── Build annotated HTML by reading textarea values from the DOM ───────────
+  const buildAnnotatedHtml = () => {
+    if (!reportRef.current || !html) return html;
+
+    // Read all current textarea values from the rendered DOM
+    const textareas = reportRef.current.querySelectorAll("textarea.ann-ta");
+    let annotated = html;
+
+    textareas.forEach((ta, i) => {
+      const val = ta.value;
+      if (!val) return;
+      // Replace the i-th textarea's content in the HTML string
+      // We match textarea tags with ann-ta class and inject the value
+      let count = 0;
+      annotated = annotated.replace(
+        /<textarea([^>]*class="[^"]*ann-ta[^"]*"[^>]*)><\/textarea>/g,
+        (match, attrs) => {
+          if (count === i) {
+            count++;
+            const escaped = val
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;");
+            return `<textarea${attrs}>${escaped}</textarea>`;
+          }
+          count++;
+          return match;
         }
-      };
-      window.addEventListener("message", handler);
-      setTimeout(() => {
-        iframe.contentWindow.postMessage({ type: "teampulse-get-html" }, "*");
-      }, 300);
-      setTimeout(() => {
-        window.removeEventListener("message", handler);
-        resolve(html);
-      }, 3000);
-    } catch (e) { resolve(html); }
-  });
+      );
+    });
+
+    // Wrap in full HTML document with styles preserved
+    return annotated;
+  };
 
   // ── Export helpers ─────────────────────────────────────────────────────────
-  const downloadHtml = async () => {
-    const liveHtml = await getIframeHtml();
-    const blob = new Blob([liveHtml], { type: "text/html" });
+  const downloadHtml = () => {
+    const annotated = buildAnnotatedHtml();
+    const blob = new Blob([annotated], { type: "text/html" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href = url;
     a.download = `iDerive_Report_${filterLabel().replace(/\s+/g, "_")}.html`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const downloadPdf = () => {
-    try {
-      const iframe = document.querySelector("iframe[title='iDerive Sprint Report']");
-      if (iframe?.contentWindow) {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        return;
-      }
-    } catch (e) {}
+    // Open annotated HTML in new window and print
+    const annotated = buildAnnotatedHtml();
     const win = window.open("", "_blank");
-    win.document.write(html);
+    win.document.write(annotated);
     win.document.close();
-    setTimeout(() => win.print(), 500);
+    setTimeout(() => { win.focus(); win.print(); }, 600);
   };
 
   const copyHtml = async () => {
-    const liveHtml = await getIframeHtml();
-    await navigator.clipboard.writeText(liveHtml);
+    const annotated = buildAnnotatedHtml();
+    await navigator.clipboard.writeText(annotated);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ── Extract just the body content from the report HTML for rendering ───────
+  // We render the report body inside a div (not iframe) so we can read textarea values
+  const getReportBody = () => {
+    if (!html) return "";
+    // Extract everything between <body> and </body>
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    return bodyMatch ? bodyMatch[1] : html;
+  };
+
+  // ── Extract styles from report HTML ───────────────────────────────────────
+  const getReportStyles = () => {
+    if (!html) return "";
+    const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+    return styleMatch ? styleMatch[1] : "";
   };
 
   return (
@@ -332,17 +357,20 @@ export default function SprintReport() {
         </div>
       )}
 
-      {/* Report iframe */}
+      {/* Report — rendered in div (not iframe) so we can read textarea values */}
       {html && !loading && (
         <div style={{ border: "0.5px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "10px 16px", background: "var(--surface)", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span className="text-sm font-medium">Report preview — {meta?.label}</span>
-            <span className="text-xs text-muted">Type your annotations directly in the report · then Download HTML or Export PDF</span>
+            <span className="text-xs text-muted">Type annotations directly · then Download HTML or Export PDF to save</span>
           </div>
-          <iframe
-            srcDoc={html}
-            style={{ width: "100%", height: "860px", border: "none", background: "#f1f5f9" }}
-            title="iDerive Sprint Report"
+          {/* Inject report styles scoped to this container */}
+          <style>{getReportStyles()}</style>
+          {/* Render report body directly in DOM so textarea values are accessible */}
+          <div
+            ref={reportRef}
+            style={{ background: "#f1f5f9", padding: "0" }}
+            dangerouslySetInnerHTML={{ __html: getReportBody() }}
           />
         </div>
       )}
