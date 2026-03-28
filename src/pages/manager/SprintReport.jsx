@@ -97,20 +97,27 @@ export default function SprintReport() {
     setLoading(false);
   };
 
-  // ── Get live HTML from iframe (includes typed annotations) ────────────
-  const getLiveHtml = () => {
+  // ── Get live HTML from iframe via postMessage ──────────────────────────
+  const getIframeHtml = () => new Promise((resolve) => {
     try {
       const iframe = document.querySelector("iframe[title='iDerive Sprint Report']");
-      if (iframe?.contentDocument) {
-        return "<!DOCTYPE html>" + iframe.contentDocument.documentElement.outerHTML;
-      }
-    } catch(e) {}
-    return html;
-  };
+      if (!iframe) { resolve(html); return; }
+      const handler = (e) => {
+        if (e.data?.type === "teampulse-html") {
+          window.removeEventListener("message", handler);
+          resolve(e.data.html || html);
+        }
+      };
+      window.addEventListener("message", handler);
+      iframe.contentWindow.postMessage({ type: "teampulse-get-html" }, "*");
+      // Timeout fallback after 1s
+      setTimeout(() => { window.removeEventListener("message", handler); resolve(html); }, 1000);
+    } catch(e) { resolve(html); }
+  });
 
   // ── Export helpers ─────────────────────────────────────────────────────
-  const downloadHtml = () => {
-    const liveHtml = getLiveHtml();
+  const downloadHtml = async () => {
+    const liveHtml = await getIframeHtml();
     const blob = new Blob([liveHtml],{type:"text/html"});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -132,7 +139,7 @@ export default function SprintReport() {
   };
 
   const copyHtml = async () => {
-    const liveHtml = getLiveHtml();
+    const liveHtml = await getIframeHtml();
     await navigator.clipboard.writeText(liveHtml);
     setCopied(true); setTimeout(()=>setCopied(false),2000);
   };
