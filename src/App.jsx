@@ -18,6 +18,7 @@ import MonthlyReports from "./pages/manager/MonthlyReports";
 import AnnualReport   from "./pages/manager/AnnualReport";
 import AIAssistant    from "./pages/manager/AIAssistant";
 import AllowedUsers   from "./pages/manager/AllowedUsers";
+import SprintReport   from "./pages/manager/SprintReport";
 
 // ─── Loading screen ───────────────────────────────────────────────────────────
 function LoadingScreen() {
@@ -213,6 +214,7 @@ function ManagerApp({ user, userRecord, logout, displayName, allMembers }) {
           {page === "annual"   && <AnnualReport   members={allMembers} />}
           {page === "ai"       && <AIAssistant    members={allMembers} />}
           {page === "users"    && <AllowedUsers   currentUserEmail={user?.email} />}
+          {page === "sprint" && <SprintReport />}
         </div>
       )}
     </div>
