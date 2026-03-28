@@ -97,22 +97,43 @@ export default function SprintReport() {
     setLoading(false);
   };
 
+  // ── Get live HTML from iframe (includes typed annotations) ────────────
+  const getLiveHtml = () => {
+    try {
+      const iframe = document.querySelector("iframe[title='iDerive Sprint Report']");
+      if (iframe?.contentDocument) {
+        return "<!DOCTYPE html>" + iframe.contentDocument.documentElement.outerHTML;
+      }
+    } catch(e) {}
+    return html;
+  };
+
   // ── Export helpers ─────────────────────────────────────────────────────
   const downloadHtml = () => {
-    const blob = new Blob([html],{type:"text/html"});
+    const liveHtml = getLiveHtml();
+    const blob = new Blob([liveHtml],{type:"text/html"});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href=url; a.download=`iDerive_Report_${filterLabel().replace(/\s+/g,"_")}.html`; a.click();
   };
 
   const downloadPdf = () => {
+    try {
+      const iframe = document.querySelector("iframe[title='iDerive Sprint Report']");
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        return;
+      }
+    } catch(e) {}
     const win = window.open("","_blank");
     win.document.write(html); win.document.close();
     setTimeout(()=>win.print(),500);
   };
 
   const copyHtml = async () => {
-    await navigator.clipboard.writeText(html);
+    const liveHtml = getLiveHtml();
+    await navigator.clipboard.writeText(liveHtml);
     setCopied(true); setTimeout(()=>setCopied(false),2000);
   };
 
