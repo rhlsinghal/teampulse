@@ -16,9 +16,10 @@ function getYears() {
 function getDateRange(month, year) {
   const y = parseInt(year);
   const m = parseInt(month);
+  // Use Date.UTC to avoid timezone shift (India UTC+5:30 would roll date back to previous month)
   return {
-    from: new Date(y, m, 1).getTime(),
-    to:   new Date(y, m + 1, 0, 23, 59, 59, 999).getTime(),
+    from: Date.UTC(y, m, 1, 0, 0, 0, 0),
+    to:   Date.UTC(y, m + 1, 0, 23, 59, 59, 999),
   };
 }
 
@@ -78,7 +79,7 @@ export default function SprintReport() {
     try {
       const body = usingManual
         ? { sprintNums }
-        : (() => { const r = getDateRange(filterMonth, filterYear); return { dateFrom: r.from, dateTo: r.to }; })();
+        : (() => { const r = getDateRange(filterMonth, filterYear); return { dateFrom: r.from, dateTo: r.to, monthLabel: `${MONTHS[parseInt(filterMonth)]} ${filterYear}` }; })();
 
       const res  = await fetch(CLICKUP_PROXY, {
         method:  "POST",
@@ -108,34 +109,27 @@ export default function SprintReport() {
   const buildAnnotatedHtml = () => {
     if (!reportRef.current || !html) return html;
 
-    // Read all current textarea values from the rendered DOM
+    // Read all textarea values at once
     const textareas = reportRef.current.querySelectorAll("textarea.ann-ta");
-    let annotated = html;
+    const values = Array.from(textareas).map(ta => ta.value);
 
-    textareas.forEach((ta, i) => {
-      const val = ta.value;
-      if (!val) return;
-      // Replace the i-th textarea's content in the HTML string
-      // We match textarea tags with ann-ta class and inject the value
-      let count = 0;
-      annotated = annotated.replace(
-        /<textarea([^>]*class="[^"]*ann-ta[^"]*"[^>]*)><\/textarea>/g,
-        (match, attrs) => {
-          if (count === i) {
-            count++;
-            const escaped = val
-              .replace(/&/g, "&amp;")
-              .replace(/</g, "&lt;")
-              .replace(/>/g, "&gt;");
-            return `<textarea${attrs}>${escaped}</textarea>`;
-          }
-          count++;
-          return match;
-        }
-      );
-    });
+    // Replace all ann-ta textareas in one pass
+    // Regex matches <textarea ...ann-ta...></textarea> including placeholder attrs
+    let idx = 0;
+    const annotated = html.replace(
+      /<textarea([^<]*?ann-ta[^<]*?)><\/textarea>/g,
+      (match, attrs) => {
+        const val = values[idx] || "";
+        idx++;
+        if (!val) return match;
+        const escaped = val
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        return `<textarea${attrs}>${escaped}</textarea>`;
+      }
+    );
 
-    // Wrap in full HTML document with styles preserved
     return annotated;
   };
 
