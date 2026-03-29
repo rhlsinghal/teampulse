@@ -170,11 +170,36 @@ export default function SprintReport() {
     return bodyMatch ? bodyMatch[1] : html;
   };
 
-  // ── Extract styles from report HTML ───────────────────────────────────────
+  // ── Extract and scope styles to .iderive-report container ───────────────
   const getReportStyles = () => {
     if (!html) return "";
     const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-    return styleMatch ? styleMatch[1] : "";
+    if (!styleMatch) return "";
+    const raw = styleMatch[1];
+    // Prefix every CSS rule with .iderive-report so styles don't leak into app
+    // Split on } to get individual rules, then prefix each selector block
+    const scoped = raw.replace(
+      /([^{}]+)\{/g,
+      (match, selectors) => {
+        // Skip @media, @keyframes, @font-face etc — prefix their inner rules instead
+        if (selectors.trim().startsWith("@")) return match;
+        const prefixed = selectors
+          .split(",")
+          .map(s => {
+            const trimmed = s.trim();
+            // Don't double-prefix already scoped rules
+            if (trimmed.startsWith(".iderive-report")) return trimmed;
+            // Scope body/html/root selectors to the container
+            if (trimmed === "body" || trimmed === "html" || trimmed === "*") {
+              return `.iderive-report`;
+            }
+            return `.iderive-report ${trimmed}`;
+          })
+          .join(", ");
+        return `${prefixed} {`;
+      }
+    );
+    return scoped;
   };
 
   return (
@@ -360,9 +385,10 @@ export default function SprintReport() {
           </div>
           {/* Inject report styles scoped to this container */}
           <style>{getReportStyles()}</style>
-          {/* Render report body directly in DOM so textarea values are accessible */}
+          {/* Render report body — .iderive-report scopes the styles to this container */}
           <div
             ref={reportRef}
+            className="iderive-report"
             style={{ background: "#f1f5f9", padding: "0" }}
             dangerouslySetInnerHTML={{ __html: getReportBody() }}
           />
