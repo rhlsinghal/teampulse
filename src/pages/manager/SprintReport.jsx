@@ -1,5 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Spinner } from "../../components/index.jsx";
+import { db } from "../../firebase";
+import { collection, doc, setDoc, getDocs, deleteDoc, orderBy, query } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 const CLICKUP_PROXY = "https://teampulse-api-pied.vercel.app/api/clickup";
 
@@ -35,6 +38,11 @@ export default function SprintReport() {
   const [meta,        setMeta]        = useState(null);
   const [error,       setError]       = useState(null);
   const [copied,      setCopied]      = useState(false);
+  const [slackStatus,  setSlackStatus]  = useState(null); // null | 'sending' | 'sent' | 'error'
+  const [drafts,       setDrafts]       = useState([]);
+  const [draftSaving,  setDraftSaving]  = useState(false);
+  const [draftSaved,   setDraftSaved]   = useState(false);
+  const [draftsOpen,   setDraftsOpen]   = useState(false);
   const reportRef = useRef(null);
 
   // ── Parse sprint number input ──────────────────────────────────────────────
@@ -65,6 +73,71 @@ export default function SprintReport() {
     setMeta(null);
     setError(null);
   };
+
+  // ── Draft helpers ─────────────────────────────────────────────────────────
+  const getUserId = () => getAuth().currentUser?.uid || "anon";
+
+  const loadDrafts = async () => {
+    try {
+      const uid  = getUserId();
+      const q    = query(collection(db, "reportDrafts", uid, "drafts"), orderBy("savedAt", "desc"));
+      const snap = await getDocs(q);
+      setDrafts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.error("loadDrafts error:", e);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!html) return;
+    setDraftSaving(true);
+    try {
+      const uid       = getUserId();
+      const annotated = buildAnnotatedHtml();
+      const draftId   = `draft_${Date.now()}`;
+      const label     = filterLabel() || meta?.label || "Untitled";
+      await setDoc(doc(db, "reportDrafts", uid, "drafts", draftId), {
+        label,
+        sprintNames: meta?.sprintNames || [],
+        bugs:        meta?.bugs        || 0,
+        month:       meta?.month       || "",
+        html:        annotated,
+        savedAt:     Date.now(),
+      });
+      await loadDrafts();
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 2500);
+    } catch (e) {
+      console.error("saveDraft error:", e);
+    }
+    setDraftSaving(false);
+  };
+
+  const deleteDraft = async (draftId) => {
+    try {
+      const uid = getUserId();
+      await deleteDoc(doc(db, "reportDrafts", uid, "drafts", draftId));
+      setDrafts(d => d.filter(x => x.id !== draftId));
+    } catch (e) {
+      console.error("deleteDraft error:", e);
+    }
+  };
+
+  const loadDraft = (draft) => {
+    setHtml(draft.html);
+    setMeta({
+      label:       draft.label,
+      sprintNames: draft.sprintNames,
+      bugs:        draft.bugs,
+      month:       draft.month,
+      sprints:     draft.sprintNames?.length || 0,
+    });
+    setDraftsOpen(false);
+    setError(null);
+  };
+
+  // Load drafts on mount
+  useEffect(() => { loadDrafts(); }, []);
 
   const filterLabel = () => {
     if (usingManual) return sprintNums.map(n => `PS${n}`).join(", ");
@@ -161,6 +234,41 @@ export default function SprintReport() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // ── Send report to Slack ───────────────────────────────────────────────────
+  const sendToSlack = async () => {
+    setSlackStatus("sending");
+    try {
+      const annotated = buildAnnotatedHtml();
+      const label     = filterLabel();
+      const res = await fetch("https://teampulse-api-pied.vercel.app/api/slack-report", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          html:        annotated,
+          filename:    `iDerive_Report_${label.replace(/[^a-zA-Z0-9]/g, "_")}.html`,
+          label:       label,
+          sprintNames: meta?.sprintNames,
+          sprints:     meta?.sprints,
+          bugs:        meta?.bugs,
+          month:       meta?.month,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSlackStatus("sent");
+        setTimeout(() => setSlackStatus(null), 4000);
+      } else {
+        console.error("Slack error:", data.error);
+        setSlackStatus("error");
+        setTimeout(() => setSlackStatus(null), 4000);
+      }
+    } catch (e) {
+      console.error("Slack send failed:", e);
+      setSlackStatus("error");
+      setTimeout(() => setSlackStatus(null), 4000);
+    }
+  };
+
   // ── Extract just the body content from the report HTML for rendering ───────
   // We render the report body inside a div (not iframe) so we can read textarea values
   const getReportBody = () => {
@@ -214,10 +322,85 @@ export default function SprintReport() {
           </div>
         </div>
         {html && (
-          <div className="flex gap-8">
+          <div className="flex gap-8 items-center">
             <button className="btn btn-ghost btn-sm" onClick={copyHtml}>{copied ? "✓ Copied" : "Copy HTML"}</button>
             <button className="btn btn-ghost btn-sm" onClick={downloadHtml}>Download HTML</button>
             <button className="btn btn-ghost btn-sm" onClick={downloadPdf}>Export PDF</button>
+            <button className="btn btn-ghost btn-sm" onClick={saveDraft} disabled={draftSaving}
+              style={{ color: draftSaved ? "var(--green)" : "" }}>
+              {draftSaving ? "Saving…" : draftSaved ? "✓ Draft saved" : "Save draft"}
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={sendToSlack}
+              disabled={slackStatus === "sending"}
+              style={{
+                background: slackStatus === "sent"   ? "#16a34a"
+                          : slackStatus === "error"  ? "#dc2626"
+                          : slackStatus === "sending" ? "#94a3b8"
+                          : "#4A154B",
+                color: "#fff",
+                border: "none",
+                opacity: slackStatus === "sending" ? 0.7 : 1,
+              }}
+            >
+              {slackStatus === "sending" ? "Sending…"
+               : slackStatus === "sent"  ? "✓ Sent to Slack"
+               : slackStatus === "error" ? "✗ Failed — retry?"
+               : "Send to Slack"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Drafts panel ── */}
+      <div className="card mb-16">
+        <div className="card-header" style={{ cursor: "pointer" }} onClick={() => setDraftsOpen(o => !o)}>
+          <span className="card-title">My drafts</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {drafts.length > 0 && (
+              <span className="badge badge-blue" style={{ fontSize: 10 }}>{drafts.length} saved</span>
+            )}
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>{draftsOpen ? "▲" : "▼"}</span>
+          </div>
+        </div>
+        {draftsOpen && (
+          <div className="card-body" style={{ padding: 0 }}>
+            {drafts.length === 0 ? (
+              <div style={{ padding: "20px 16px", textAlign: "center", color: "var(--faint)", fontSize: 13 }}>
+                No drafts saved yet. Generate a report and click "Save draft" to save it here.
+              </div>
+            ) : (
+              <div>
+                {drafts.map(d => (
+                  <div key={d.id} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 16px",
+                    borderBottom: "0.5px solid var(--border)",
+                    cursor: "pointer",
+                  }}>
+                    <div style={{ flex: 1 }} onClick={() => loadDraft(d)}>
+                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{d.label}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                        {d.sprintNames?.join(", ")}
+                        {d.bugs > 0 ? ` · ${d.bugs} bugs` : ""}
+                        {" · Saved "}
+                        {new Date(d.savedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        {" "}
+                        {new Date(d.savedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                      </div>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" onClick={() => loadDraft(d)} style={{ flexShrink: 0 }}>
+                      Open
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => deleteDraft(d.id)}
+                      style={{ flexShrink: 0, color: "var(--red)" }}>
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
