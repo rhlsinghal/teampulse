@@ -204,7 +204,7 @@ export default function SprintReport() {
   };
 
   // Load drafts on mount (after loadDrafts is defined)
-  useEffect(() => { loadDrafts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadDrafts(); }, []);
 
   // ── Export helpers ─────────────────────────────────────────────────────────
   const downloadHtml = () => {
