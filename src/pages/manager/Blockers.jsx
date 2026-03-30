@@ -20,16 +20,33 @@ export default function Blockers({ members }) {
 
     Promise.all(members.map(m =>
       loadEntriesInRange(m.name, startStr, TODAY).then(entries =>
-        entries
-          .filter(e => e.blockers?.trim())
-          .map(e => ({
-            member:   m.name,
-            date:     e.date,
-            text:     e.blockers,
-            resolved: e.blockerResolved || false,
+        entries.flatMap(e => {
+          // New schema — each SOD task with a non-N/A blocker becomes its own row
+          if (e.sod?.tasks) {
+            return e.sod.tasks
+              .filter(t => t.blocker && t.blocker !== "N/A")
+              .map(t => ({
+                member:       m.name,
+                date:         e.date,
+                text:         t.blocker,
+                taskText:     t.text,
+                client:       t.client || null,
+                resolved:     false,
+                resolvedDate: null,
+              }));
+          }
+          // Legacy schema
+          if (!e.blockers?.trim()) return [];
+          return [{
+            member:       m.name,
+            date:         e.date,
+            text:         e.blockers,
+            taskText:     null,
+            client:       e.tasks?.[0]?.client || null,
+            resolved:     e.blockerResolved || false,
             resolvedDate: e.blockerResolvedDate || null,
-            tasks:    e.tasks || [],
-          }))
+          }];
+        })
       )
     )).then(results => {
       const all = results.flat().sort((a, b) => b.date.localeCompare(a.date));
@@ -102,7 +119,6 @@ export default function Blockers({ members }) {
             <tbody>
               {displayed.map((b, i) => {
                 const color = avatarColor(b.member);
-                const topClient = b.tasks?.[0]?.client || null;
                 return (
                   <tr key={i}>
                     <td>
@@ -111,8 +127,11 @@ export default function Blockers({ members }) {
                         <span className="text-sm font-medium">{b.member}</span>
                       </div>
                     </td>
-                    <td className="text-sm" style={{ maxWidth: 300 }}>{b.text}</td>
-                    <td>{topClient ? <ClientBadge client={topClient} /> : <span className="text-faint">—</span>}</td>
+                    <td className="text-sm" style={{ maxWidth: 300 }}>
+                      {b.taskText && <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>Task: {b.taskText}</div>}
+                      {b.text}
+                    </td>
+                    <td>{b.client ? <ClientBadge client={b.client} /> : <span className="text-faint">—</span>}</td>
                     <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--muted)" }}>{fmt(b.date)}</td>
                     <td>
                       <span className="badge" style={{
