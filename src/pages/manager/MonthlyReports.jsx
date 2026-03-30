@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { fmt, MONTHS, toYYYYMM } from "../../utils/dates";
 import { ClientBadge, StatusBadge, Loading, Spinner } from "../../components/index.jsx";
 import { loadEntriesInRange } from "../../hooks/useHistory";
-import { aggregateMonth, loadMonthlySummary } from "../../utils/aggregator";
+import { aggregateMonth, loadMonthlySummary, normaliseEntry } from "../../utils/aggregator";
 import { BANDWIDTH } from "../../utils/constants";
 
 const AI_PROXY_URL = "https://teampulse-api-pied.vercel.app/api/chat";
@@ -26,10 +26,16 @@ export default function MonthlyReports({ members }) {
     setAiSummary(null);
     const startDate = `${monthKey}-01`;
     const endDate   = `${monthKey}-31`;
-    loadEntriesInRange(selectedMember, startDate, endDate).then(async (ents) => {
+    loadEntriesInRange(selectedMember, startDate, endDate).then(async (rawEnts) => {
+      const ents = rawEnts.map(normaliseEntry);
       setEntries(ents);
-      let sum = await loadMonthlySummary(selectedMember, monthKey);
-      if (!sum && ents.length) sum = await aggregateMonth(selectedMember, monthKey, ents);
+      // Always re-aggregate from live entries so blockers and tasks are always current
+      let sum = null;
+      if (ents.length) {
+        sum = await aggregateMonth(selectedMember, monthKey, rawEnts);
+      } else {
+        sum = await loadMonthlySummary(selectedMember, monthKey);
+      }
       setSummary(sum);
       setLoading(false);
     });
