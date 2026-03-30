@@ -95,7 +95,7 @@ export function TopNav({ displayName, photoURL, isManager, onLogout }) {
 }
 
 // ─── Member Sidebar ───────────────────────────────────────────────────────────
-export function MemberSidebar({ page, onChange, streak, submittedToday }) {
+export function MemberSidebar({ page, onChange, streak, sodSubmitted, eodSubmitted, completionPct }) {
   const items = [
     { key: "today",   icon: "📋", label: "Today's update" },
     { key: "history", icon: "🕓", label: "My history" },
@@ -118,14 +118,29 @@ export function MemberSidebar({ page, onChange, streak, submittedToday }) {
           </div>
         </div>
       )}
-      <div style={{ marginTop: 10, padding: "8px 10px", background: submittedToday ? "var(--green-bg)" : "var(--amber-bg)", border: `0.5px solid ${submittedToday ? "var(--green-bd)" : "var(--amber-bd)"}`, borderRadius: 8 }}>
-        <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>Today</div>
-        <div className="flex items-center gap-4">
-          <span className={`sdot ${submittedToday ? "sdot-green" : "sdot-amber"}`} />
-          <span style={{ fontSize: 11, color: submittedToday ? "var(--green)" : "var(--amber)", fontWeight: 500 }}>
-            {submittedToday ? "Submitted" : "Not yet submitted"}
+      <div style={{ marginTop: 10, padding: "10px", background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: 8 }}>
+        <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7, fontWeight: 500 }}>Today's status</div>
+        <div className="flex items-center gap-4" style={{ marginBottom: 5 }}>
+          <span className={`sdot ${sodSubmitted ? "sdot-green" : "sdot-amber"}`} />
+          <span style={{ fontSize: 11, color: sodSubmitted ? "var(--green)" : "var(--amber)", fontWeight: 500 }}>
+            {sodSubmitted ? "SOD submitted" : "SOD pending"}
           </span>
         </div>
+        <div className="flex items-center gap-4">
+          <span className={`sdot ${eodSubmitted ? "sdot-green" : "sdot-amber"}`} />
+          <span style={{ fontSize: 11, color: eodSubmitted ? "var(--green)" : "var(--amber)", fontWeight: 500 }}>
+            {eodSubmitted ? "EOD submitted" : "EOD pending"}
+          </span>
+        </div>
+        {eodSubmitted && completionPct != null && (
+          <div style={{ borderTop: "0.5px solid var(--border)", paddingTop: 8, marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginBottom: 3 }}>Completion rate</div>
+            <div style={{ fontSize: 15, fontWeight: 500, color: "var(--accent)" }}>{completionPct}%</div>
+            <div style={{ height: 3, borderRadius: 2, background: "var(--border)", overflow: "hidden", marginTop: 4 }}>
+              <div style={{ height: "100%", borderRadius: 2, width: `${completionPct}%`, background: completionPct === 100 ? "var(--green)" : "var(--accent)" }} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

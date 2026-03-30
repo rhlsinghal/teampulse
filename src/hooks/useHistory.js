@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { db } from "../firebase";
 import {
-  collection, doc, setDoc, getDocs, query,
+  collection, doc, setDoc, getDoc, getDocs, query,
   orderBy, where, limit,
 } from "firebase/firestore";
 import { TODAY } from "../utils/dates";
@@ -29,6 +29,7 @@ export function useHistory(memberName) {
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Legacy save (old single-form schema) ─────────────────────────────────
   const save = async (form) => {
     if (!memberName) return false;
     setSaving(true);
@@ -40,17 +41,12 @@ export function useHistory(memberName) {
         updatedAt: new Date().toISOString(),
       };
       await setDoc(doc(db, "standup", memberName, "entries", TODAY), entry);
-
-      // Update local state
       setEntries(prev => {
         const filtered = prev.filter(e => e.date !== TODAY);
         return [entry, ...filtered].sort((a, b) => b.date.localeCompare(a.date));
       });
-
-      // Trigger monthly aggregation in background
       const currentEntries = entries.filter(e => e.date !== TODAY);
       aggregateMonth(memberName, toYYYYMM(new Date()), [entry, ...currentEntries]).catch(() => {});
-
       setSaving(false);
       return true;
     } catch (e) {
@@ -60,22 +56,69 @@ export function useHistory(memberName) {
     }
   };
 
-  const getTodayEntry = () => entries.find(e => e.date === TODAY) || null;
-  const getEntryByDate = (date) => entries.find(e => e.date === date) || null;
+  // ── Save SOD ──────────────────────────────────────────────────────────────
+  const saveSOD = async (sodData) => {
+    if (!memberName) return false;
+    setSaving(true);
+    try {
+      const ref     = doc(db, "standup", memberName, "entries", TODAY);
+      const snap    = await getDoc(ref);
+      const current = snap.exists() ? snap.data() : {};
+      const entry   = { ...current, date: TODAY, sod: sodData };
+      await setDoc(ref, entry);
+      setEntries(prev => {
+        const filtered = prev.filter(e => e.date !== TODAY);
+        return [entry, ...filtered].sort((a, b) => b.date.localeCompare(a.date));
+      });
+      setSaving(false);
+      return true;
+    } catch (e) {
+      console.error("saveSOD error:", e);
+      setSaving(false);
+      return false;
+    }
+  };
+
+  // ── Save EOD ──────────────────────────────────────────────────────────────
+  const saveEOD = async (eodData) => {
+    if (!memberName) return false;
+    setSaving(true);
+    try {
+      const ref     = doc(db, "standup", memberName, "entries", TODAY);
+      const snap    = await getDoc(ref);
+      const current = snap.exists() ? snap.data() : { date: TODAY };
+      const entry   = { ...current, date: TODAY, eod: eodData };
+      await setDoc(ref, entry);
+      setEntries(prev => {
+        const filtered = prev.filter(e => e.date !== TODAY);
+        return [entry, ...filtered].sort((a, b) => b.date.localeCompare(a.date));
+      });
+      const currentEntries = entries.filter(e => e.date !== TODAY);
+      aggregateMonth(memberName, toYYYYMM(new Date()), [entry, ...currentEntries]).catch(() => {});
+      setSaving(false);
+      return true;
+    } catch (e) {
+      console.error("saveEOD error:", e);
+      setSaving(false);
+      return false;
+    }
+  };
+
+  const getTodayEntry    = () => entries.find(e => e.date === TODAY) || null;
+  const getEntryByDate   = (date) => entries.find(e => e.date === date) || null;
+
   const getStreak = () => {
     let streak = 0;
     const d = new Date();
     while (true) {
       const iso = d.toISOString().slice(0, 10);
-      if (entries.find(e => e.date === iso)) {
-        streak++;
-        d.setDate(d.getDate() - 1);
-      } else { break; }
+      if (entries.find(e => e.date === iso)) { streak++; d.setDate(d.getDate() - 1); }
+      else break;
     }
     return streak;
   };
 
-  return { entries, loading, saving, save, load, getTodayEntry, getEntryByDate, getStreak };
+  return { entries, loading, saving, save, saveSOD, saveEOD, load, getTodayEntry, getEntryByDate, getStreak };
 }
 
 // Load all members' latest entry for manager overview

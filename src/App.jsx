@@ -102,8 +102,14 @@ function MemberApp({ user, userRecord, logout, displayName, isPreview, previewNa
   const memberName = isPreview ? previewName : (userRecord?.name || displayName);
   const { getTodayEntry, getStreak } = useHistory(memberName);
 
-  const submittedToday = !!getTodayEntry();
-  const streak         = getStreak();
+  const todayEntry    = getTodayEntry();
+  const sodSubmitted  = !!todayEntry?.sod?.submittedAt;
+  const eodSubmitted  = !!todayEntry?.eod?.submittedAt;
+  const streak        = getStreak();
+  const eodTasks      = todayEntry?.eod?.tasks || [];
+  const completionPct = eodTasks.length
+    ? Math.round(eodTasks.filter(t => t.outcome === "Done").length / eodTasks.length * 100)
+    : null;
 
   return (
     <div className="page-body with-sidebar">
@@ -111,7 +117,9 @@ function MemberApp({ user, userRecord, logout, displayName, isPreview, previewNa
         page={page}
         onChange={setPage}
         streak={streak}
-        submittedToday={submittedToday}
+        sodSubmitted={sodSubmitted}
+        eodSubmitted={eodSubmitted}
+        completionPct={completionPct}
       />
       {page === "today"   && <TodayUpdate memberName={memberName} />}
       {page === "history" && <MyHistory   memberName={memberName} />}
