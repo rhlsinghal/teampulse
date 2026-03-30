@@ -1,14 +1,45 @@
 import { db } from "../firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 
+// ── Schema normaliser ─────────────────────────────────────────────────────────
+export function normaliseEntry(entry) {
+  if (!entry.sod) return entry;
+
+  const sodTasks = entry.sod.tasks || [];
+  const eodTasks = entry.eod?.tasks || [];
+
+  const tasks = eodTasks.length
+    ? eodTasks.map(t => ({
+        client: t.client || "",
+        text:   t.text   || "",
+        status: t.outcome === "Done"       ? "Done"
+              : t.outcome === "Blocked"    ? "Blocked"
+              : t.outcome === "Carry over" ? "In Progress"
+              : "In Progress",
+        outcome: t.outcome,
+        notes:   t.notes || "",
+      }))
+    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", status: "In Progress" }));
+
+  const blockerTasks = sodTasks.filter(t => t.blocker && t.blocker !== "N/A");
+  const blockers     = blockerTasks.map(t => `${t.text}: ${t.blocker}`).join("; ");
+
+  return {
+    date:          entry.date,
+    bandwidth:     entry.sod.bandwidth || 3,
+    tasks,
+    blockers,
+    notCompleted:  entry.eod?.notCompleted  || "",
+    tomorrowFocus: entry.eod?.tomorrowFocus || "",
+  };
+}
+
 /**
  * Build a monthly summary from an array of daily entries for a given member/month.
  * Stores it in Firestore at monthlySummaries/{member}_{YYYY-MM}
  */
 export async function aggregateMonth(memberName, monthKey, entries) {
-  const monthEntries = entries
-    .filter(e => e.date && e.date.startsWith(monthKey))
-    .map(normaliseEntry);
+  const monthEntries = entries.filter(e => e.date && e.date.startsWith(monthKey)).map(normaliseEntry);
   if (!monthEntries.length) return;
 
   const tasksByClient = {};
