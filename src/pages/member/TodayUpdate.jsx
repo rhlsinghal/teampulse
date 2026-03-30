@@ -9,30 +9,25 @@ const emptySOD = () => ({
   tasks: [{ client: "", text: "", blocker: "N/A" }],
 });
 
-const emptyEOD = () => ({
-  notCompleted: "",
-  tomorrowFocus: "",
-});
+const emptyEOD = () => ({ notCompleted: "", tomorrowFocus: "" });
 
 const OUTCOMES = ["Done", "Carry over", "Blocked"];
-
 const OUTCOME_STYLE = {
-  "Done":       { bg: "var(--green-bg)",  color: "var(--green)",  bd: "var(--green-bd)"  },
-  "Carry over": { bg: "var(--amber-bg)",  color: "var(--amber)",  bd: "var(--amber-bd)"  },
-  "Blocked":    { bg: "var(--red-bg)",    color: "var(--red)",    bd: "var(--red-bd)"    },
+  "Done":       { bg: "var(--green-bg)", color: "var(--green)", bd: "var(--green-bd)" },
+  "Carry over": { bg: "var(--amber-bg)", color: "var(--amber)", bd: "var(--amber-bd)" },
+  "Blocked":    { bg: "var(--red-bg)",   color: "var(--red)",   bd: "var(--red-bd)"   },
 };
 
 function fmtTime(ts) {
   if (!ts) return null;
   return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
-
 function calcPct(eodTasks) {
   if (!eodTasks?.length) return null;
   return Math.round(eodTasks.filter(t => t.outcome === "Done").length / eodTasks.length * 100);
 }
 
-// ── SOD read-only view ───────────────────────────────────────────────────────
+// ── SOD read-only ─────────────────────────────────────────────────────────────
 function SODReadOnly({ sod }) {
   return (
     <>
@@ -79,7 +74,7 @@ function SODReadOnly({ sod }) {
   );
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function TodayUpdate({ memberName }) {
   const { entries, saving, saveSOD, saveEOD, getTodayEntry, getStreak } = useHistory(memberName);
   const { toast, show: showToast } = useToast();
@@ -92,6 +87,7 @@ export default function TodayUpdate({ memberName }) {
 
   const [sodForm, setSODForm] = useState(emptySOD());
   const [eodForm, setEODForm] = useState({ tasks: [], ...emptyEOD() });
+  const [eodExpanded, setEodExpanded] = useState(null); // index of expanded notes row
 
   // Pre-fill SOD
   useEffect(() => {
@@ -103,30 +99,39 @@ export default function TodayUpdate({ memberName }) {
     }
   }, [entries]);
 
-  // Pre-fill EOD from SOD tasks
+  // Pre-fill EOD from SOD tasks + any extra EOD-only tasks
   useEffect(() => {
-    if (sodData?.tasks?.length) {
-      const existing = eodData?.tasks || [];
+    if (sodSubmitted) {
+      const sodTasks  = sodData?.tasks || [];
+      const existing  = eodData?.tasks || [];
+      // Merge: SOD tasks first (matched by index), then any extra EOD-only tasks
+      const merged = sodTasks.map((t, i) => ({
+        client:    t.client,
+        text:      t.text,
+        fromSOD:   true,
+        outcome:   existing[i]?.outcome   || "Done",
+        carryOver: existing[i]?.carryOver ?? false,
+        notes:     existing[i]?.notes     || "",
+      }));
+      // Append any extra tasks added directly in EOD (beyond SOD task count)
+      const extras = existing.slice(sodTasks.length).map(t => ({ ...t, fromSOD: false }));
       setEODForm({
-        tasks: sodData.tasks.map((t, i) => ({
-          client:    t.client,
-          text:      t.text,
-          outcome:   existing[i]?.outcome  || "Done",
-          carryOver: existing[i]?.carryOver ?? false,
-        })),
+        tasks:         [...merged, ...extras],
         notCompleted:  eodData?.notCompleted  || "",
         tomorrowFocus: eodData?.tomorrowFocus || "",
       });
     }
   }, [entries]);
 
-  // SOD task helpers
+  // SOD helpers
   const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "N/A" }] }));
   const updateSODTask = (i, field, val) => setSODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
   const removeSODTask = (i) => setSODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
-  // EOD task helpers
+  // EOD helpers
   const updateEODTask = (i, field, val) => setEODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
+  const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", fromSOD: false, outcome: "Done", carryOver: false, notes: "" }] }));
+  const removeEODTask = (i) => setEODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
   const handleSaveSOD = async () => {
     if (!sodForm.tasks.some(t => t.text.trim())) { showToast("Add at least one task", "error"); return; }
@@ -139,7 +144,6 @@ export default function TodayUpdate({ memberName }) {
     showToast(ok ? "EOD submitted ✓" : "Save failed — try again", ok ? "success" : "error");
   };
 
-  // Stats
   const streak     = getStreak();
   const pct        = calcPct(eodData?.tasks);
   const doneCount  = (eodData?.tasks || []).filter(t => t.outcome === "Done").length;
@@ -168,15 +172,9 @@ export default function TodayUpdate({ memberName }) {
         <div className="card-header">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className="card-title">Start of day</span>
-            {sodSubmitted && (
-              <span className="badge badge-green" style={{ fontSize: 10 }}>
-                Submitted · {fmtTime(sodData.submittedAt)}
-              </span>
-            )}
+            {sodSubmitted && <span className="badge badge-green" style={{ fontSize: 10 }}>Submitted · {fmtTime(sodData.submittedAt)}</span>}
           </div>
-          <span className="card-meta">
-            {sodSubmitted ? "read only — locked after submit" : "fill in at start of day"}
-          </span>
+          <span className="card-meta">{sodSubmitted ? "read only — locked after submit" : "fill in at start of day"}</span>
         </div>
 
         <div className="card-body">
@@ -196,7 +194,6 @@ export default function TodayUpdate({ memberName }) {
                   );
                 })}
               </div>
-
               <div className="flex items-center justify-between mb-8">
                 <div className="field-label">Tasks planned for today</div>
                 <button className="btn btn-ghost btn-sm" onClick={addSODTask}>＋ Add task</button>
@@ -213,25 +210,16 @@ export default function TodayUpdate({ memberName }) {
                 <tbody>
                   {sodForm.tasks.map((t, i) => (
                     <tr key={i}>
+                      <td><input className="task-cell-input" placeholder="Client..." value={t.client} onChange={e => updateSODTask(i, "client", e.target.value)} /></td>
+                      <td><input className="task-cell-input" placeholder="Task description..." value={t.text} onChange={e => updateSODTask(i, "text", e.target.value)} /></td>
                       <td>
-                        <input className="task-cell-input" placeholder="Client..." value={t.client}
-                          onChange={e => updateSODTask(i, "client", e.target.value)} />
-                      </td>
-                      <td>
-                        <input className="task-cell-input" placeholder="Task description..." value={t.text}
-                          onChange={e => updateSODTask(i, "text", e.target.value)} />
-                      </td>
-                      <td>
-                        <input className="task-cell-input"
-                          value={t.blocker}
-                          placeholder="N/A"
+                        <input className="task-cell-input" value={t.blocker} placeholder="N/A"
                           onChange={e => updateSODTask(i, "blocker", e.target.value)}
                           onFocus={e => { if (e.target.value === "N/A") updateSODTask(i, "blocker", ""); }}
                           onBlur={e => { if (!e.target.value.trim()) updateSODTask(i, "blocker", "N/A"); }}
                           style={t.blocker && t.blocker !== "N/A"
                             ? { color: "var(--red)", background: "var(--red-bg)", borderColor: "var(--red-bd)" }
-                            : { color: "var(--faint)", fontStyle: "italic" }}
-                        />
+                            : { color: "var(--faint)", fontStyle: "italic" }} />
                       </td>
                       <td><div className="task-del" onClick={() => removeSODTask(i)}>×</div></td>
                     </tr>
@@ -255,9 +243,7 @@ export default function TodayUpdate({ memberName }) {
       {/* Divider */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
         <div style={{ flex: 1, height: "0.5px", background: "var(--border)" }} />
-        <span style={{ fontSize: 10, fontWeight: 500, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-          End of day
-        </span>
+        <span style={{ fontSize: 10, fontWeight: 500, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.1em" }}>End of day</span>
         <div style={{ flex: 1, height: "0.5px", background: "var(--border)" }} />
       </div>
 
@@ -266,19 +252,11 @@ export default function TodayUpdate({ memberName }) {
         <div className="card-header">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className="card-title">End of day</span>
-            {eodSubmitted && (
-              <span className="badge badge-green" style={{ fontSize: 10 }}>
-                Submitted · {fmtTime(eodData.submittedAt)}
-              </span>
-            )}
-            {!eodSubmitted && sodSubmitted && (
-              <span className="badge badge-amber" style={{ fontSize: 10 }}>Pending</span>
-            )}
+            {eodSubmitted && <span className="badge badge-green" style={{ fontSize: 10 }}>Submitted · {fmtTime(eodData.submittedAt)}</span>}
+            {!eodSubmitted && sodSubmitted && <span className="badge badge-amber" style={{ fontSize: 10 }}>Pending</span>}
           </div>
           <span className="card-meta">
-            {!sodSubmitted ? "submit SOD first"
-              : eodSubmitted ? "you can still update before midnight"
-              : "fill in before end of day"}
+            {!sodSubmitted ? "submit SOD first" : eodSubmitted ? "you can still update before midnight" : "fill in before end of day"}
           </span>
         </div>
 
@@ -290,44 +268,92 @@ export default function TodayUpdate({ memberName }) {
           <>
             <div className="card-body">
               <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-                Update the status of each task you planned this morning
+                Update the status of each task — add notes or mark tasks added outside SOD
               </div>
 
               {/* EOD task list */}
               <div style={{ border: "0.5px solid var(--border)", borderRadius: 8, overflow: "hidden", marginBottom: 14 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px", gap: 8, padding: "6px 10px", background: "var(--surface)", borderBottom: "0.5px solid var(--border)" }}>
+                {/* Header */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 60px 28px", gap: 8, padding: "6px 10px", background: "var(--surface)", borderBottom: "0.5px solid var(--border)" }}>
                   <div className="field-label" style={{ margin: 0 }}>Task</div>
                   <div className="field-label" style={{ margin: 0 }}>Outcome</div>
-                  <div className="field-label" style={{ margin: 0 }}>Carry over?</div>
+                  <div className="field-label" style={{ margin: 0 }}>Notes</div>
+                  <div />
                 </div>
+
                 {eodForm.tasks.map((t, i) => {
-                  const s = OUTCOME_STYLE[t.outcome] || OUTCOME_STYLE["Done"];
+                  const s       = OUTCOME_STYLE[t.outcome] || OUTCOME_STYLE["Done"];
+                  const isExtra = !t.fromSOD;
+                  const expanded = eodExpanded === i;
                   return (
-                    <div key={i} style={{
-                      display: "grid", gridTemplateColumns: "1fr 100px 80px", gap: 8,
-                      alignItems: "center", padding: "8px 10px",
-                      borderBottom: i < eodForm.tasks.length - 1 ? "0.5px solid var(--border)" : "none",
-                    }}>
-                      <div>
-                        {t.client && <span className="badge badge-blue" style={{ fontSize: 10, marginRight: 5 }}>{t.client}</span>}
-                        <span style={{ fontSize: 12 }}>{t.text || "—"}</span>
+                    <div key={i}>
+                      <div style={{
+                        display: "grid", gridTemplateColumns: "1fr 100px 60px 28px", gap: 8,
+                        alignItems: "center", padding: "8px 10px",
+                        borderBottom: "0.5px solid var(--border)",
+                        background: isExtra ? "var(--amber-bg)" : "transparent",
+                      }}>
+                        {/* Task name — editable if extra EOD task */}
+                        <div>
+                          {isExtra ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                              <input className="task-cell-input" placeholder="Client..." value={t.client}
+                                onChange={e => updateEODTask(i, "client", e.target.value)}
+                                style={{ fontSize: 11, marginBottom: 2 }} />
+                              <input className="task-cell-input" placeholder="Task description..."
+                                value={t.text} onChange={e => updateEODTask(i, "text", e.target.value)} />
+                            </div>
+                          ) : (
+                            <div>
+                              {t.client && <span className="badge badge-blue" style={{ fontSize: 10, marginRight: 5 }}>{t.client}</span>}
+                              <span style={{ fontSize: 12 }}>{t.text || "—"}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Outcome */}
+                        <select value={t.outcome}
+                          onChange={e => { const v = e.target.value; updateEODTask(i, "outcome", v); updateEODTask(i, "carryOver", v === "Carry over"); }}
+                          style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: `0.5px solid ${s.bd}`, background: s.bg, color: s.color, fontWeight: 500, cursor: "pointer" }}>
+                          {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+
+                        {/* Notes toggle */}
+                        <button className="btn btn-ghost btn-sm"
+                          onClick={() => setEodExpanded(expanded ? null : i)}
+                          style={{ fontSize: 10, padding: "3px 6px", color: t.notes ? "var(--accent)" : "var(--faint)" }}>
+                          {t.notes ? "Notes ✓" : "Notes"}
+                        </button>
+
+                        {/* Remove — only for extra EOD tasks */}
+                        <div style={{ display: "flex", justifyContent: "center" }}>
+                          {isExtra
+                            ? <div className="task-del" onClick={() => removeEODTask(i)}>×</div>
+                            : <div style={{ width: 20 }} />}
+                        </div>
                       </div>
-                      <select
-                        value={t.outcome}
-                        onChange={e => {
-                          const v = e.target.value;
-                          updateEODTask(i, "outcome", v);
-                          updateEODTask(i, "carryOver", v === "Carry over");
-                        }}
-                        style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: `0.5px solid ${s.bd}`, background: s.bg, color: s.color, fontWeight: 500, cursor: "pointer" }}>
-                        {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                      <div style={{ fontSize: 12, color: t.carryOver ? "var(--amber)" : "var(--faint)", fontWeight: t.carryOver ? 500 : 400, paddingLeft: 4 }}>
-                        {t.carryOver ? "Yes" : "No"}
-                      </div>
+
+                      {/* Expandable notes row */}
+                      {expanded && (
+                        <div style={{ padding: "8px 10px", borderBottom: "0.5px solid var(--border)", background: "var(--surface)" }}>
+                          <textarea className="field-input" rows={2}
+                            placeholder="Add notes, blockers, or context for this task..."
+                            value={t.notes}
+                            onChange={e => updateEODTask(i, "notes", e.target.value)}
+                            style={{ marginBottom: 0 }} />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+
+                {/* Add extra EOD task row */}
+                <div style={{ padding: "8px 10px" }}>
+                  <button className="btn btn-ghost btn-sm" onClick={addEODTask}
+                    style={{ fontSize: 11, color: "var(--muted)" }}>
+                    ＋ Add task not in SOD
+                  </button>
+                </div>
               </div>
 
               {/* Live completion bar */}
@@ -352,29 +378,22 @@ export default function TodayUpdate({ memberName }) {
               <div className="form-grid-2">
                 <div className="field">
                   <label className="field-label">What wasn't completed and why?</label>
-                  <textarea className="field-input" rows={3}
-                    placeholder="Brief reason for any carry-overs or blocked tasks..."
-                    value={eodForm.notCompleted}
-                    onChange={e => setEODForm(f => ({ ...f, notCompleted: e.target.value }))} />
+                  <textarea className="field-input" rows={3} placeholder="Brief reason for any carry-overs or blocked tasks..."
+                    value={eodForm.notCompleted} onChange={e => setEODForm(f => ({ ...f, notCompleted: e.target.value }))} />
                 </div>
                 <div className="field">
                   <label className="field-label">
                     Tomorrow's focus
                     <span style={{ fontWeight: 400, color: "var(--faint)", marginLeft: 4 }}>(pre-fills next SOD)</span>
                   </label>
-                  <textarea className="field-input" rows={3}
-                    placeholder="What will you prioritise tomorrow?"
-                    value={eodForm.tomorrowFocus}
-                    onChange={e => setEODForm(f => ({ ...f, tomorrowFocus: e.target.value }))} />
+                  <textarea className="field-input" rows={3} placeholder="What will you prioritise tomorrow?"
+                    value={eodForm.tomorrowFocus} onChange={e => setEODForm(f => ({ ...f, tomorrowFocus: e.target.value }))} />
                 </div>
               </div>
             </div>
 
             <div className="submit-row">
-              <button className="btn btn-ghost"
-                onClick={() => setEODForm(f => ({ ...f, notCompleted: "", tomorrowFocus: "" }))}>
-                Clear
-              </button>
+              <button className="btn btn-ghost" onClick={() => setEODForm(f => ({ ...f, notCompleted: "", tomorrowFocus: "" }))}>Clear</button>
               <button className="btn btn-primary" onClick={handleSaveEOD} disabled={saving}
                 style={{ background: "var(--green)", borderColor: "var(--green)" }}>
                 {saving ? <><Spinner white /> Saving...</> : eodSubmitted ? "Update EOD" : "Submit EOD"}
