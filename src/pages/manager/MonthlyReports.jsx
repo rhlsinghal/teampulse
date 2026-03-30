@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { fmt, MONTHS, toYYYYMM } from "../../utils/dates";
 import { ClientBadge, StatusBadge, Loading, Spinner } from "../../components/index.jsx";
 import { loadEntriesInRange } from "../../hooks/useHistory";
-import { aggregateMonth, loadMonthlySummary, normaliseEntry } from "../../utils/aggregator";
+import { aggregateMonth, loadMonthlySummary } from "../../utils/aggregator";
 import { BANDWIDTH } from "../../utils/constants";
 
 const AI_PROXY_URL = "https://teampulse-api-pied.vercel.app/api/chat";
@@ -26,8 +26,7 @@ export default function MonthlyReports({ members }) {
     setAiSummary(null);
     const startDate = `${monthKey}-01`;
     const endDate   = `${monthKey}-31`;
-    loadEntriesInRange(selectedMember, startDate, endDate).then(async (rawEnts) => {
-      const ents = rawEnts.map(normaliseEntry);
+    loadEntriesInRange(selectedMember, startDate, endDate).then(async (ents) => {
       setEntries(ents);
       let sum = await loadMonthlySummary(selectedMember, monthKey);
       if (!sum && ents.length) sum = await aggregateMonth(selectedMember, monthKey, ents);
@@ -41,7 +40,7 @@ export default function MonthlyReports({ members }) {
     const rows = [["Date","Client","Task","Status","Bandwidth","Blockers"]];
     entries.forEach(e => {
       (e.tasks || []).forEach(t => {
-        rows.push([e.date, t.client || "Internal", t.text, t.status || t.outcome || "", BANDWIDTH[e.bandwidth]?.label || "", e.blockers || ""]);
+        rows.push([e.date, t.client || "Internal", t.text, t.status, BANDWIDTH[e.bandwidth]?.label || "", e.blockers || ""]);
       });
     });
     const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
@@ -241,13 +240,6 @@ Reply ONLY with this exact JSON (no markdown):
                     </tr>
                   ))
                 )}
-                {entries.filter(e => e.blockers?.trim()).map((e, i) => (
-                  <tr key={`blocker-${i}`} style={{ background: "var(--red-bg)" }}>
-                    <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--muted)" }}>{fmt(e.date)}</td>
-                    <td colSpan={2} style={{ fontSize: 12, color: "var(--red)" }}>⚑ {e.blockers}</td>
-                    <td><span className="badge" style={{ background: "var(--red-bg)", color: "var(--red)", borderColor: "var(--red-bd)" }}>Blocker</span></td>
-                  </tr>
-                ))}
               </tbody>
             </table>
           </div>
