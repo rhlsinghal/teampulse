@@ -38,7 +38,6 @@ export default function SprintReport() {
   const [meta,        setMeta]        = useState(null);
   const [error,       setError]       = useState(null);
   const [copied,      setCopied]      = useState(false);
-  const [slackStatus,  setSlackStatus]  = useState(null); // null | 'sending' | 'sent' | 'error'
   const [drafts,       setDrafts]       = useState([]);
   const [draftSaving,  setDraftSaving]  = useState(false);
   const [draftSaved,   setDraftSaved]   = useState(false);
@@ -73,71 +72,6 @@ export default function SprintReport() {
     setMeta(null);
     setError(null);
   };
-
-  // ── Draft helpers ─────────────────────────────────────────────────────────
-  const getUserId = () => getAuth().currentUser?.uid || "anon";
-
-  const loadDrafts = async () => {
-    try {
-      const uid  = getUserId();
-      const q    = query(collection(db, "reportDrafts", uid, "drafts"), orderBy("savedAt", "desc"));
-      const snap = await getDocs(q);
-      setDrafts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) {
-      console.error("loadDrafts error:", e);
-    }
-  };
-
-  const saveDraft = async () => {
-    if (!html) return;
-    setDraftSaving(true);
-    try {
-      const uid       = getUserId();
-      const annotated = buildAnnotatedHtml();
-      const draftId   = `draft_${Date.now()}`;
-      const label     = filterLabel() || meta?.label || "Untitled";
-      await setDoc(doc(db, "reportDrafts", uid, "drafts", draftId), {
-        label,
-        sprintNames: meta?.sprintNames || [],
-        bugs:        meta?.bugs        || 0,
-        month:       meta?.month       || "",
-        html:        annotated,
-        savedAt:     Date.now(),
-      });
-      await loadDrafts();
-      setDraftSaved(true);
-      setTimeout(() => setDraftSaved(false), 2500);
-    } catch (e) {
-      console.error("saveDraft error:", e);
-    }
-    setDraftSaving(false);
-  };
-
-  const deleteDraft = async (draftId) => {
-    try {
-      const uid = getUserId();
-      await deleteDoc(doc(db, "reportDrafts", uid, "drafts", draftId));
-      setDrafts(d => d.filter(x => x.id !== draftId));
-    } catch (e) {
-      console.error("deleteDraft error:", e);
-    }
-  };
-
-  const loadDraft = (draft) => {
-    setHtml(draft.html);
-    setMeta({
-      label:       draft.label,
-      sprintNames: draft.sprintNames,
-      bugs:        draft.bugs,
-      month:       draft.month,
-      sprints:     draft.sprintNames?.length || 0,
-    });
-    setDraftsOpen(false);
-    setError(null);
-  };
-
-  // Load drafts on mount
-  useEffect(() => { loadDrafts(); }, []);
 
   const filterLabel = () => {
     if (usingManual) return sprintNums.map(n => `PS${n}`).join(", ");
@@ -206,6 +140,72 @@ export default function SprintReport() {
     return annotated;
   };
 
+  // ── Draft helpers (placed after buildAnnotatedHtml so it's in scope) ───────
+  const getUserId = () => getAuth().currentUser?.uid || "anon";
+
+  const loadDrafts = async () => {
+    try {
+      const uid  = getUserId();
+      const q    = query(collection(db, "reportDrafts", uid, "drafts"), orderBy("savedAt", "desc"));
+      const snap = await getDocs(q);
+      setDrafts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.error("loadDrafts error:", e);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!html) return;
+    setDraftSaving(true);
+    try {
+      const uid       = getUserId();
+      const annotated = buildAnnotatedHtml();
+      const label     = meta?.label || filterLabel() || "Untitled";
+      const draftId   = `draft_${Date.now()}`;
+      await setDoc(doc(db, "reportDrafts", uid, "drafts", draftId), {
+        label,
+        sprintNames: meta?.sprintNames || [],
+        bugs:        meta?.bugs        || 0,
+        month:       meta?.month       || "",
+        html:        annotated,
+        savedAt:     Date.now(),
+      });
+      await loadDrafts();
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 2500);
+    } catch (e) {
+      console.error("saveDraft error:", e);
+      alert("Failed to save draft: " + e.message);
+    }
+    setDraftSaving(false);
+  };
+
+  const deleteDraft = async (draftId) => {
+    try {
+      const uid = getUserId();
+      await deleteDoc(doc(db, "reportDrafts", uid, "drafts", draftId));
+      setDrafts(d => d.filter(x => x.id !== draftId));
+    } catch (e) {
+      console.error("deleteDraft error:", e);
+    }
+  };
+
+  const loadDraft = (draft) => {
+    setHtml(draft.html);
+    setMeta({
+      label:       draft.label,
+      sprintNames: draft.sprintNames,
+      bugs:        draft.bugs,
+      month:       draft.month,
+      sprints:     draft.sprintNames?.length || 0,
+    });
+    setDraftsOpen(false);
+    setError(null);
+  };
+
+  // Load drafts on mount (after loadDrafts is defined)
+  useEffect(() => { loadDrafts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Export helpers ─────────────────────────────────────────────────────────
   const downloadHtml = () => {
     const annotated = buildAnnotatedHtml();
@@ -232,41 +232,6 @@ export default function SprintReport() {
     await navigator.clipboard.writeText(annotated);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  // ── Send report to Slack ───────────────────────────────────────────────────
-  const sendToSlack = async () => {
-    setSlackStatus("sending");
-    try {
-      const annotated = buildAnnotatedHtml();
-      const label     = filterLabel();
-      const res = await fetch("https://teampulse-api-pied.vercel.app/api/slack-report", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          html:        annotated,
-          filename:    `iDerive_Report_${label.replace(/[^a-zA-Z0-9]/g, "_")}.html`,
-          label:       label,
-          sprintNames: meta?.sprintNames,
-          sprints:     meta?.sprints,
-          bugs:        meta?.bugs,
-          month:       meta?.month,
-        }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setSlackStatus("sent");
-        setTimeout(() => setSlackStatus(null), 4000);
-      } else {
-        console.error("Slack error:", data.error);
-        setSlackStatus("error");
-        setTimeout(() => setSlackStatus(null), 4000);
-      }
-    } catch (e) {
-      console.error("Slack send failed:", e);
-      setSlackStatus("error");
-      setTimeout(() => setSlackStatus(null), 4000);
-    }
   };
 
   // ── Extract just the body content from the report HTML for rendering ───────
@@ -330,25 +295,7 @@ export default function SprintReport() {
               style={{ color: draftSaved ? "var(--green)" : "" }}>
               {draftSaving ? "Saving…" : draftSaved ? "✓ Draft saved" : "Save draft"}
             </button>
-            <button
-              className="btn btn-sm"
-              onClick={sendToSlack}
-              disabled={slackStatus === "sending"}
-              style={{
-                background: slackStatus === "sent"   ? "#16a34a"
-                          : slackStatus === "error"  ? "#dc2626"
-                          : slackStatus === "sending" ? "#94a3b8"
-                          : "#4A154B",
-                color: "#fff",
-                border: "none",
-                opacity: slackStatus === "sending" ? 0.7 : 1,
-              }}
-            >
-              {slackStatus === "sending" ? "Sending…"
-               : slackStatus === "sent"  ? "✓ Sent to Slack"
-               : slackStatus === "error" ? "✗ Failed — retry?"
-               : "Send to Slack"}
-            </button>
+
           </div>
         )}
       </div>
