@@ -4,7 +4,7 @@ import { fmt, TODAY } from "../../utils/dates";
 import { ClientBadge, Loading } from "../../components/index.jsx";
 import { loadAllMembersLatest, loadEntriesInRange } from "../../hooks/useHistory";
 import { db } from "../../firebase";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 
 export default function Blockers({ members }) {
   const [blockerList, setBlockerList] = useState([]);
@@ -25,15 +25,23 @@ export default function Blockers({ members }) {
           if (e.sod?.tasks) {
             return e.sod.tasks
               .filter(t => t.blocker && t.blocker !== "N/A")
-              .map(t => ({
-                member:       m.name,
-                date:         e.date,
-                text:         t.blocker,
-                taskText:     t.text,
-                client:       t.client || null,
-                resolved:     false,
-                resolvedDate: null,
-              }));
+              .map(t => {
+                const isResolved = t.blockerResolved === true || t.blocker?.startsWith("Resolved");
+                const resolvedDate = t.blockerResolvedDate || null;
+                // Strip the "Resolved (date): " prefix for display
+                const displayText = isResolved && t.blocker.startsWith("Resolved")
+                  ? t.blocker.replace(/^Resolved \([^)]+\):\s*/, "")
+                  : t.blocker;
+                return {
+                  member:       m.name,
+                  date:         e.date,
+                  text:         displayText,
+                  taskText:     t.text,
+                  client:       t.client || null,
+                  resolved:     isResolved,
+                  resolvedDate: resolvedDate,
+                };
+              });
           }
           // Legacy schema
           if (!e.blockers?.trim()) return [];
@@ -62,9 +70,40 @@ export default function Blockers({ members }) {
   const activeCount   = blockerList.filter(b => !b.resolved).length;
   const resolvedCount = blockerList.filter(b => b.resolved).length;
 
-  const markResolved = (idx) => {
-    setBlockerList(prev => prev.map((b, i) => i === idx ? { ...b, resolved: true, resolvedDate: TODAY } : b));
-    // In production, update Firestore entry
+  const markResolved = async (idx) => {
+    const b = blockerList[idx];
+    // Optimistic UI update
+    setBlockerList(prev => prev.map((item, i) =>
+      i === idx ? { ...item, resolved: true, resolvedDate: TODAY } : item
+    ));
+    try {
+      const entryRef = doc(db, "standup", b.member, "entries", b.date);
+      const snap     = await getDoc(entryRef);
+      if (!snap.exists()) return;
+      const entry = snap.data();
+
+      if (entry.sod?.tasks) {
+        // New schema — mark the specific SOD task's blocker as resolved
+        const updatedTasks = (entry.sod.tasks || []).map(t =>
+          t.text === b.taskText && t.blocker === b.text
+            ? { ...t, blocker: `Resolved (${TODAY}): ${t.blocker}`, blockerResolved: true, blockerResolvedDate: TODAY }
+            : t
+        );
+        await setDoc(entryRef, { ...entry, sod: { ...entry.sod, tasks: updatedTasks } });
+      } else {
+        // Legacy schema
+        await updateDoc(entryRef, {
+          blockerResolved:     true,
+          blockerResolvedDate: TODAY,
+        });
+      }
+    } catch (e) {
+      console.error("markResolved error:", e);
+      // Revert optimistic update on failure
+      setBlockerList(prev => prev.map((item, i) =>
+        i === idx ? { ...item, resolved: false, resolvedDate: null } : item
+      ));
+    }
   };
 
   if (loading) return <div className="main-content"><Loading /></div>;
