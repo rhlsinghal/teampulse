@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/teampulse/static/css/main.a1dacbbc.css",
-    "main.js": "/teampulse/static/js/main.81495a0d.js",
+    "main.js": "/teampulse/static/js/main.a22177df.js",
     "index.html": "/teampulse/index.html",
     "main.a1dacbbc.css.map": "/teampulse/static/css/main.a1dacbbc.css.map",
-    "main.81495a0d.js.map": "/teampulse/static/js/main.81495a0d.js.map"
+    "main.a22177df.js.map": "/teampulse/static/js/main.a22177df.js.map"
   },
   "entrypoints": [
     "static/css/main.a1dacbbc.css",
-    "static/js/main.81495a0d.js"
+    "static/js/main.a22177df.js"
   ]
 }
