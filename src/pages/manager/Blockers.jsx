@@ -26,12 +26,8 @@ export default function Blockers({ members }) {
             return e.sod.tasks
               .filter(t => t.blocker && t.blocker !== "N/A")
               .map(t => {
-                const isResolved = t.blockerResolved === true || t.blocker?.startsWith("Resolved");
-                const resolvedDate = t.blockerResolvedDate || null;
-                // Strip the "Resolved (date): " prefix for display
-                const displayText = isResolved && t.blocker.startsWith("Resolved")
-                  ? t.blocker.replace(/^Resolved \([^)]+\):\s*/, "")
-                  : t.blocker;
+                const isResolved  = t.blockerResolved === true;
+                const displayText = t.blocker;
                 return {
                   member:       m.name,
                   date:         e.date,
@@ -39,7 +35,7 @@ export default function Blockers({ members }) {
                   taskText:     t.text,
                   client:       t.client || null,
                   resolved:     isResolved,
-                  resolvedDate: resolvedDate,
+                  resolvedDate: t.blockerResolvedDate || null,
                 };
               });
           }
@@ -70,23 +66,22 @@ export default function Blockers({ members }) {
   const activeCount   = blockerList.filter(b => !b.resolved).length;
   const resolvedCount = blockerList.filter(b => b.resolved).length;
 
-  const markResolved = async (idx) => {
-    const b = blockerList[idx];
-    // Optimistic UI update
-    setBlockerList(prev => prev.map((item, i) =>
-      i === idx ? { ...item, resolved: true, resolvedDate: TODAY } : item
+  const markResolved = async (blocker) => {
+    // Optimistic update — match by object identity, works correctly with filtered list
+    setBlockerList(prev => prev.map(item =>
+      item === blocker ? { ...item, resolved: true, resolvedDate: TODAY } : item
     ));
     try {
-      const entryRef = doc(db, "standup", b.member, "entries", b.date);
+      const entryRef = doc(db, "standup", blocker.member, "entries", blocker.date);
       const snap     = await getDoc(entryRef);
       if (!snap.exists()) return;
       const entry = snap.data();
 
       if (entry.sod?.tasks) {
-        // New schema — mark the specific SOD task's blocker as resolved
+        // New schema — mark the specific SOD task blocker as resolved
         const updatedTasks = (entry.sod.tasks || []).map(t =>
-          t.text === b.taskText && t.blocker === b.text
-            ? { ...t, blocker: `Resolved (${TODAY}): ${t.blocker}`, blockerResolved: true, blockerResolvedDate: TODAY }
+          t.text === blocker.taskText && t.blocker === blocker.text
+            ? { ...t, blockerResolved: true, blockerResolvedDate: TODAY }
             : t
         );
         await setDoc(entryRef, { ...entry, sod: { ...entry.sod, tasks: updatedTasks } });
@@ -99,9 +94,9 @@ export default function Blockers({ members }) {
       }
     } catch (e) {
       console.error("markResolved error:", e);
-      // Revert optimistic update on failure
-      setBlockerList(prev => prev.map((item, i) =>
-        i === idx ? { ...item, resolved: false, resolvedDate: null } : item
+      // Revert on failure
+      setBlockerList(prev => prev.map(item =>
+        item === blocker ? { ...item, resolved: false, resolvedDate: null } : item
       ));
     }
   };
@@ -183,7 +178,7 @@ export default function Blockers({ members }) {
                     </td>
                     <td>
                       {!b.resolved && (
-                        <button className="btn btn-sm" style={{ color: "var(--green)", borderColor: "var(--green-bd)", background: "var(--green-bg)" }} onClick={() => markResolved(i)}>
+                        <button className="btn btn-sm" style={{ color: "var(--green)", borderColor: "var(--green-bd)", background: "var(--green-bg)" }} onClick={() => markResolved(b)}>
                           Mark resolved
                         </button>
                       )}
