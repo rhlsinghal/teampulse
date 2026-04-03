@@ -6,7 +6,7 @@ import { useHistory } from "../../hooks/useHistory";
 
 const emptySOD = () => ({
   bandwidth: 3,
-  tasks: [{ client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "" }],
+  tasks: [{ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }],
 });
 
 const emptyEOD = () => ({ notCompleted: "", tomorrowFocus: "" });
@@ -62,15 +62,15 @@ function SODReadOnly({ sod }) {
                 ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
                 : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
               <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{t.text || "—"}</span>
-              {t.blocker && t.blocker !== "N/A" && (
+              {t.blocker?.trim() && (
                 <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>
                   {t.blocker}
                 </span>
               )}
             </div>
-            {(t.startDate || t.dueDate || t.endDate) && (
+            {(t.startDate || t.dueDate) && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                {[["Start", t.startDate], ["Due", t.dueDate], ["End", t.endDate]].map(([lbl, val], di) => val ? (
+                {[["Start", t.startDate], ["Due", t.dueDate]].map(([lbl, val], di) => val ? (
                   <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 0 }}>
                     {di > 0 && <span style={{ color: "var(--faint)", fontSize: 10, marginRight: 6 }}>→</span>}
                     <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface)", padding: "2px 8px", borderRadius: 5, border: "0.5px solid var(--border)" }}>
@@ -109,8 +109,8 @@ export default function TodayUpdate({ memberName }) {
       setSODForm({
         bandwidth: sodData.bandwidth || 3,
         tasks: sodData.tasks?.length
-          ? sodData.tasks.map(t => ({ client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "", ...t }))
-          : [{ client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "" }],
+          ? sodData.tasks.map(t => ({ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "", ...t }))
+          : [{ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }],
       });
     }
   }, [entries]);
@@ -136,7 +136,7 @@ export default function TodayUpdate({ memberName }) {
   }, [entries]);
 
   // SOD helpers
-  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "" }] }));
+  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }] }));
   const updateSODTask = (i, field, val) => setSODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
   const removeSODTask = (i) => setSODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
@@ -225,13 +225,12 @@ export default function TodayUpdate({ memberName }) {
                 <table className="task-table" style={{ minWidth: 760 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: 105 }}>Client</th>
-                      <th style={{ width: 90 }}>Priority</th>
-                      <th style={{ minWidth: 220 }}>Task</th>
-                      <th style={{ width: 108 }}>Start date</th>
-                      <th style={{ width: 108 }}>Due date</th>
-                      <th style={{ width: 108 }}>End date</th>
-                      <th style={{ minWidth: 130 }}>Blocker / notes</th>
+                      <th style={{ width: 115 }}>Client</th>
+                      <th style={{ width: 100 }}>Priority</th>
+                      <th style={{ minWidth: 260 }}>Task</th>
+                      <th style={{ width: 120 }}>Start date</th>
+                      <th style={{ width: 120 }}>Due date</th>
+                      <th style={{ minWidth: 155 }}>Blocker / notes</th>
                       <th style={{ width: 28 }}></th>
                     </tr>
                   </thead>
@@ -264,11 +263,6 @@ export default function TodayUpdate({ memberName }) {
                           <td>
                             <input type="date" className="task-cell-input" value={t.dueDate || ""}
                               onChange={e => updateSODTask(i, "dueDate", e.target.value)}
-                              style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
-                          </td>
-                          <td>
-                            <input type="date" className="task-cell-input" value={t.endDate || ""}
-                              onChange={e => updateSODTask(i, "endDate", e.target.value)}
                               style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
                           </td>
                           <td>
