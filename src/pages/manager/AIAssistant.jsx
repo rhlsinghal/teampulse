@@ -105,6 +105,22 @@ export default function AIAssistant({ members }) {
   };
 
   // ── Build team context ──
+  // Normalise entry to flat shape regardless of schema version
+  const flattenEntry = (e) => {
+    if (e.sod) {
+      // New schema
+      const sodTasks  = e.sod.tasks  || [];
+      const eodTasks  = e.eod?.tasks || [];
+      const tasks     = eodTasks.length ? eodTasks : sodTasks.map(t => ({ ...t, status: "In Progress", outcome: "In Progress" }));
+      const blockers  = sodTasks.filter(t => t.blocker && t.blocker !== "N/A" && !t.blockerResolved).map(t => t.blocker).join("; ");
+      const doneTasks = eodTasks.filter(t => t.outcome === "Done").length;
+      return { date: e.date, bandwidth: e.sod.bandwidth, tasks, blockers, doneTasks, sodSubmitted: !!e.sod.submittedAt, eodSubmitted: !!e.eod?.submittedAt };
+    }
+    // Legacy schema
+    const doneTasks = (e.tasks || []).filter(t => t.status === "Done").length;
+    return { date: e.date, bandwidth: e.bandwidth, tasks: e.tasks || [], blockers: e.blockers || "", doneTasks, sodSubmitted: true, eodSubmitted: false };
+  };
+
   const buildContext = async () => {
     const start = new Date();
     start.setDate(start.getDate() - 30);
@@ -112,17 +128,19 @@ export default function AIAssistant({ members }) {
     const allData = await Promise.all(
       members.map(async m => {
         const entries = await loadEntriesInRange(m.name, startStr, TODAY);
-        return { member: m.name, entries };
+        return { member: m.name, entries: entries.map(flattenEntry) };
       })
     );
     return allData.map(({ member, entries }) => {
       if (!entries.length) return `${member}: no updates in last 30 days`;
       const latest = entries[0];
-      const tasks = (latest.tasks || []).map(t => `${t.client || "Internal"}:${t.text}[${t.status}]`).join(", ");
+      const taskStr = latest.tasks.map(t => `${t.client || "Internal"}:${t.text}[${t.outcome || t.status}][${t.priority || "Medium"}]`).join(", ");
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
       const weekEntries = entries.filter(e => new Date(e.date + "T00:00:00") >= weekAgo);
-      const weekDone = weekEntries.reduce((a, e) => a + (e.tasks?.filter(t => t.status === "Done").length || 0), 0);
-      return `${member}: latest=${latest.date}, bw=${BANDWIDTH[latest.bandwidth]?.label || "?"}, blocker=${latest.blockers?.trim() ? `"${latest.blockers}"` : "none"}, todayTasks=[${tasks}], weekSubmissions=${weekEntries.length}, weekDone=${weekDone}`;
+      const weekDone = weekEntries.reduce((a, e) => a + e.doneTasks, 0);
+      const sodCount = weekEntries.filter(e => e.sodSubmitted).length;
+      const eodCount = weekEntries.filter(e => e.eodSubmitted).length;
+      return `${member}: latest=${latest.date}, bw=${BANDWIDTH[latest.bandwidth]?.label || "?"}, blocker=${latest.blockers?.trim() ? `"${latest.blockers}"` : "none"}, latestTasks=[${taskStr}], weekSubmissions=${weekEntries.length}(SOD:${sodCount}/EOD:${eodCount}), weekDone=${weekDone}`;
     }).join("\n");
   };
 

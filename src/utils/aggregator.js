@@ -4,14 +4,13 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 // ── Schema normaliser ─────────────────────────────────────────────────────────
 export function normaliseEntry(entry) {
   if (!entry.sod) return entry;
-
   const sodTasks = entry.sod.tasks || [];
   const eodTasks = entry.eod?.tasks || [];
-
   const tasks = eodTasks.length
-    ? eodTasks.map(t => ({
-        client: t.client || "",
-        text:   t.text   || "",
+    ? eodTasks.map((t, i) => ({
+        client:   t.client   || "",
+        text:     t.text     || "",
+        priority: sodTasks[i]?.priority || t.priority || "Medium",
         status: t.outcome === "Done"       ? "Done"
               : t.outcome === "Blocked"    ? "Blocked"
               : t.outcome === "Carry over" ? "In Progress"
@@ -19,11 +18,9 @@ export function normaliseEntry(entry) {
         outcome: t.outcome,
         notes:   t.notes || "",
       }))
-    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", status: "In Progress" }));
-
-  const blockerTasks = sodTasks.filter(t => t.blocker && t.blocker !== "N/A");
+    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", priority: t.priority || "Medium", status: "In Progress" }));
+  const blockerTasks = sodTasks.filter(t => t.blocker?.trim() && t.blocker !== "N/A");
   const blockers     = blockerTasks.map(t => `${t.text}: ${t.blocker}`).join("; ");
-
   return {
     date:          entry.date,
     bandwidth:     entry.sod.bandwidth || 3,
@@ -39,14 +36,17 @@ export function normaliseEntry(entry) {
  * Stores it in Firestore at monthlySummaries/{member}_{YYYY-MM}
  */
 export async function aggregateMonth(memberName, monthKey, entries) {
-  const monthEntries = entries.filter(e => e.date && e.date.startsWith(monthKey)).map(normaliseEntry);
+  const monthEntries = entries
+    .filter(e => e.date && e.date.startsWith(monthKey))
+    .map(normaliseEntry);
   if (!monthEntries.length) return;
 
-  const tasksByClient = {};
-  const tasksByStatus = { "In Progress": 0, "Done": 0, "Blocked": 0, "Pending": 0 };
-  let totalTasks = 0;
+  const tasksByClient   = {};
+  const tasksByStatus   = { "In Progress": 0, "Done": 0, "Blocked": 0, "Pending": 0 };
+  const tasksByPriority = { "High": 0, "Medium": 0, "Low": 0 };
+  let totalTasks    = 0;
   let totalBlockers = 0;
-  const bwValues = [];
+  const bwValues    = [];
   const blockerList = [];
 
   monthEntries.forEach(entry => {
@@ -61,6 +61,8 @@ export async function aggregateMonth(memberName, monthKey, entries) {
       const client = t.client || "Internal";
       tasksByClient[client] = (tasksByClient[client] || 0) + 1;
       if (tasksByStatus[t.status] !== undefined) tasksByStatus[t.status]++;
+      const pri = t.priority || "Medium";
+      if (tasksByPriority[pri] !== undefined) tasksByPriority[pri]++;
     });
   });
 
@@ -80,6 +82,7 @@ export async function aggregateMonth(memberName, monthKey, entries) {
     tasksByStatus,
     avgBandwidth:   avgBw,
     topClient,
+    tasksByPriority,
     blockerList,
     generatedAt:    new Date().toISOString(),
   };

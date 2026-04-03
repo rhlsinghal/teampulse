@@ -6,7 +6,7 @@ import { useHistory } from "../../hooks/useHistory";
 
 const emptySOD = () => ({
   bandwidth: 3,
-  tasks: [{ client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "" }],
+  tasks: [{ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "", endDate: "" }],
 });
 
 const emptyEOD = () => ({ notCompleted: "", tomorrowFocus: "" });
@@ -16,6 +16,13 @@ const OUTCOME_STYLE = {
   "Done":       { bg: "var(--green-bg)", color: "var(--green)", bd: "var(--green-bd)" },
   "Carry over": { bg: "var(--amber-bg)", color: "var(--amber)", bd: "var(--amber-bd)" },
   "Blocked":    { bg: "var(--red-bg)",   color: "var(--red)",   bd: "var(--red-bd)"   },
+};
+
+const PRIORITIES = ["High", "Medium", "Low"];
+const PRIORITY_STYLE = {
+  "High":   { color: "var(--red)",   bg: "var(--red-bg)",   bd: "var(--red-bd)"   },
+  "Medium": { color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
+  "Low":    { color: "var(--blue)",  bg: "var(--blue-bg)",  bd: "var(--blue-bd)"  },
 };
 
 function fmtTime(ts) {
@@ -55,9 +62,13 @@ function SODReadOnly({ sod }) {
                 ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
                 : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
               <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{t.text || "—"}</span>
-              {t.blocker && t.blocker !== "N/A" && (
+              {t.priority && (() => {
+                const ps = PRIORITY_STYLE[t.priority];
+                return ps ? <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority}</span> : null;
+              })()}
+              {t.blocker?.trim() && (
                 <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>
-                  {t.blocker}
+                  ⚑ {t.blocker}
                 </span>
               )}
             </div>
@@ -129,7 +140,7 @@ export default function TodayUpdate({ memberName }) {
   }, [entries]);
 
   // SOD helpers
-  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "" }] }));
+  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "", endDate: "" }] }));
   const updateSODTask = (i, field, val) => setSODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
   const removeSODTask = (i) => setSODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
@@ -231,8 +242,8 @@ export default function TodayUpdate({ memberName }) {
                         style={{ flex: 1, fontWeight: t.text ? 500 : 400 }} />
                       <div className="task-del" onClick={() => removeSODTask(i)}>×</div>
                     </div>
-                    {/* Row 2: date strip + blockers */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {/* Row 2: date strip */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                       {[["Start", "startDate"], ["Due", "dueDate"], ["End", "endDate"]].map(([lbl, field], di) => (
                         <div key={field} style={{ display: "flex", alignItems: "center", gap: 0 }}>
                           {di > 0 && <span style={{ color: "var(--faint)", fontSize: 11, marginRight: 6 }}>→</span>}
@@ -242,15 +253,33 @@ export default function TodayUpdate({ memberName }) {
                           </div>
                         </div>
                       ))}
-                      {/* Blocker inline */}
-                      <div style={{ marginLeft: "auto" }}>
-                        <input className="task-cell-input" value={t.blocker} placeholder="N/A"
-                          onChange={e => updateSODTask(i, "blocker", e.target.value)}
-                          onFocus={e => { if (e.target.value === "N/A") updateSODTask(i, "blocker", ""); }}
-                          onBlur={e => { if (!e.target.value.trim()) updateSODTask(i, "blocker", "N/A"); }}
+                    </div>
+                    {/* Row 3: priority + blocker */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ flexShrink: 0, width: 120 }}>
+                        <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--faint)", marginBottom: 4 }}>Priority</div>
+                        <select
+                          value={t.priority || "Medium"}
+                          onChange={e => updateSODTask(i, "priority", e.target.value)}
                           style={{
-                            width: 160, fontSize: 11,
-                            ...(t.blocker && t.blocker !== "N/A"
+                            width: "100%", fontSize: 11, padding: "4px 7px", borderRadius: 6,
+                            border: `0.5px solid ${PRIORITY_STYLE[t.priority || "Medium"]?.bd || "var(--border)"}`,
+                            background: PRIORITY_STYLE[t.priority || "Medium"]?.bg || "var(--surface)",
+                            color: PRIORITY_STYLE[t.priority || "Medium"]?.color || "var(--text)",
+                            fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
+                          }}>
+                          {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--faint)", marginBottom: 4 }}>Blocker / dependency</div>
+                        <input className="task-cell-input"
+                          value={t.blocker}
+                          placeholder="Any blocker? Leave blank if none"
+                          onChange={e => updateSODTask(i, "blocker", e.target.value)}
+                          style={{
+                            width: "100%", fontSize: 11,
+                            ...(t.blocker?.trim()
                               ? { color: "var(--red)", background: "var(--red-bg)", borderColor: "var(--red-bd)" }
                               : { color: "var(--faint)", fontStyle: "italic" })
                           }} />
