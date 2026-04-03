@@ -542,8 +542,33 @@ export default function SprintReport() {
             <span className="text-xs text-muted">Type annotations directly · then Download HTML or Export PDF to save</span>
           </div>
           <style>{getReportStyles()}</style>
-          <div ref={reportRef} className="iderive-report" style={{ background: "#f1f5f9", padding: 0 }}
-            dangerouslySetInnerHTML={{ __html: getReportBody() }} />
+          <div className="iderive-report" style={{ background: "#f1f5f9", padding: 0 }}
+            dangerouslySetInnerHTML={{ __html: getReportBody() }}
+            ref={(el) => {
+              reportRef.current = el;
+              // React strips <script> tags from dangerouslySetInnerHTML
+              // Inject bugFilter into window so onclick handlers work in preview
+              if (el && !window.bugFilter) {
+                window.bugFilter = function(type) {
+                  var rows = el.querySelectorAll("#bug-list .bug-row");
+                  rows.forEach(function(row) {
+                    var status = row.getAttribute("data-status");
+                    row.style.display = (type === "all" || status === type) ? "" : "none";
+                  });
+                  el.querySelectorAll(".bf-btn").forEach(function(btn) {
+                    btn.classList.toggle("bf-active", btn.getAttribute("onclick") === "bugFilter('" + type + "')");
+                  });
+                  var visible = Array.from(rows).filter(function(r){ return r.style.display !== "none"; });
+                  var half = Math.ceil(visible.length / 2);
+                  var col1 = el.querySelector("#bug-col-1");
+                  var col2 = el.querySelector("#bug-col-2");
+                  if(col1 && col2) {
+                    visible.forEach(function(r, i){ (i < half ? col1 : col2).appendChild(r); });
+                  }
+                };
+              }
+            }}
+          />
         </div>
       )}
 
