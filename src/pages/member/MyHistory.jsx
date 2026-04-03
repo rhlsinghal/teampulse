@@ -43,7 +43,7 @@ function WeekCalendar({ year, month, entries, selectedDate, onSelect, onNavigate
     const dayOfWeek = d.getDay(); // 0=Sun,6=Sat
     if (dayOfWeek >= 1 && dayOfWeek <= 5) {
       // ISO date string
-      const iso  = d.toISOString().slice(0, 10);
+      const iso  = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       const inMonth = d.getMonth() === month && d.getFullYear() === year;
       const entry   = entryMap[iso];
       const isFuture = iso > TODAY;
