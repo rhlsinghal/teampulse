@@ -6,7 +6,7 @@ import { useHistory } from "../../hooks/useHistory";
 
 const emptySOD = () => ({
   bandwidth: 3,
-  tasks: [{ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "", endDate: "" }],
+  tasks: [{ client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "" }],
 });
 
 const emptyEOD = () => ({ notCompleted: "", tomorrowFocus: "" });
@@ -16,13 +16,6 @@ const OUTCOME_STYLE = {
   "Done":       { bg: "var(--green-bg)", color: "var(--green)", bd: "var(--green-bd)" },
   "Carry over": { bg: "var(--amber-bg)", color: "var(--amber)", bd: "var(--amber-bd)" },
   "Blocked":    { bg: "var(--red-bg)",   color: "var(--red)",   bd: "var(--red-bd)"   },
-};
-
-const PRIORITIES = ["High", "Medium", "Low"];
-const PRIORITY_STYLE = {
-  "High":   { color: "var(--red)",   bg: "var(--red-bg)",   bd: "var(--red-bd)"   },
-  "Medium": { color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
-  "Low":    { color: "var(--blue)",  bg: "var(--blue-bg)",  bd: "var(--blue-bd)"  },
 };
 
 function fmtTime(ts) {
@@ -54,36 +47,35 @@ function SODReadOnly({ sod }) {
         </div>
       </div>
       <div className="field-label mb-8">Tasks planned</div>
-      <div style={{ overflowX: "auto" }}>
-        <table className="task-table" style={{ minWidth: 700 }}>
-          <thead>
-            <tr>
-              <th style={{ width: 90 }}>Client</th>
-              <th style={{ width: 75 }}>Priority</th>
-              <th>Task</th>
-              <th style={{ width: 96 }}>Start</th>
-              <th style={{ width: 96 }}>Due</th>
-              <th style={{ width: 96 }}>End</th>
-              <th style={{ width: 160 }}>Blocker / notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(sod.tasks || []).map((t, i) => {
-              const ps = PRIORITY_STYLE[t.priority || "Medium"];
-              return (
-                <tr key={i}>
-                  <td>{t.client ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span> : <span style={{ color: "var(--faint)" }}>—</span>}</td>
-                  <td><span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority || "Medium"}</span></td>
-                  <td style={{ fontSize: 12, fontWeight: 500 }}>{t.text || "—"}</td>
-                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.startDate || <span style={{ color: "var(--faint)" }}>—</span>}</td>
-                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.dueDate || <span style={{ color: "var(--faint)" }}>—</span>}</td>
-                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.endDate || <span style={{ color: "var(--faint)" }}>—</span>}</td>
-                  <td>{t.blocker?.trim() ? <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>⚑ {t.blocker}</span> : <span style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic" }}>—</span>}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {(sod.tasks || []).map((t, i) => (
+          <div key={i} style={{ border: "0.5px solid var(--border)", borderRadius: 8, padding: "9px 10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+              {t.client
+                ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
+                : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
+              <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{t.text || "—"}</span>
+              {t.blocker && t.blocker !== "N/A" && (
+                <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>
+                  {t.blocker}
+                </span>
+              )}
+            </div>
+            {(t.startDate || t.dueDate || t.endDate) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {[["Start", t.startDate], ["Due", t.dueDate], ["End", t.endDate]].map(([lbl, val], di) => val ? (
+                  <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                    {di > 0 && <span style={{ color: "var(--faint)", fontSize: 10, marginRight: 6 }}>→</span>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface)", padding: "2px 8px", borderRadius: 5, border: "0.5px solid var(--border)" }}>
+                      <span style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{lbl}</span>
+                      <span style={{ fontSize: 11, color: "var(--text)", fontFamily: "JetBrains Mono, monospace" }}>{val}</span>
+                    </div>
+                  </div>
+                ) : null)}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </>
   );
@@ -137,7 +129,7 @@ export default function TodayUpdate({ memberName }) {
   }, [entries]);
 
   // SOD helpers
-  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "", endDate: "" }] }));
+  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "N/A", startDate: "", dueDate: "", endDate: "" }] }));
   const updateSODTask = (i, field, val) => setSODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
   const removeSODTask = (i) => setSODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
@@ -162,6 +154,7 @@ export default function TodayUpdate({ memberName }) {
   const carryCount = (eodData?.tasks || []).filter(t => t.outcome === "Carry over").length;
 
   // Shared date strip style
+
   return (
     <div className="main-content">
       <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>Today's update</div>
@@ -218,21 +211,20 @@ export default function TodayUpdate({ memberName }) {
 
               <div className="flex items-center justify-between mb-8">
                 <div className="field-label">Tasks planned for today</div>
-                <button className="btn btn-ghost btn-sm" onClick={addSODTask}>＋ Add task</button>
               </div>
 
-              {/* Task table — Option B flat layout */}
+              {/* Task table — flat Option B layout */}
               <div style={{ overflowX: "auto", marginBottom: 12 }}>
                 <table className="task-table" style={{ minWidth: 760 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: 90 }}>Client</th>
-                      <th style={{ width: 80 }}>Priority</th>
-                      <th style={{ minWidth: 240 }}>Task</th>
-                      <th style={{ width: 110 }}>Start date</th>
-                      <th style={{ width: 110 }}>Due date</th>
-                      <th style={{ width: 110 }}>End date</th>
-                      <th style={{ minWidth: 170 }}>Blocker / notes</th>
+                      <th style={{ width: 105 }}>Client</th>
+                      <th style={{ width: 90 }}>Priority</th>
+                      <th style={{ minWidth: 220 }}>Task</th>
+                      <th style={{ width: 108 }}>Start date</th>
+                      <th style={{ width: 108 }}>Due date</th>
+                      <th style={{ width: 108 }}>End date</th>
+                      <th style={{ minWidth: 130 }}>Blocker / notes</th>
                       <th style={{ width: 28 }}></th>
                     </tr>
                   </thead>
@@ -290,10 +282,13 @@ export default function TodayUpdate({ memberName }) {
 
         {!sodSubmitted && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderTop: "0.5px solid var(--border)", marginTop: 4 }}>
-            <button className="btn btn-ghost" onClick={() => setSODForm(emptySOD())}>Clear</button>
-            <button className="btn btn-primary" onClick={handleSaveSOD} disabled={saving}>
-              {saving ? <><Spinner white /> Saving...</> : "Submit SOD"}
-            </button>
+            <button className="btn btn-ghost btn-sm" onClick={addSODTask}>＋ Add task</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost" onClick={() => setSODForm(emptySOD())}>Clear</button>
+              <button className="btn btn-primary" onClick={handleSaveSOD} disabled={saving}>
+                {saving ? <><Spinner white /> Saving...</> : "Submit SOD"}
+              </button>
+            </div>
           </div>
         )}
         {sodSubmitted && <div style={{ height: 12 }} />}
