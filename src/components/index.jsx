@@ -76,7 +76,7 @@ export function AccessDenied({ user, onLogout }) {
 }
 
 // ─── Top Nav ──────────────────────────────────────────────────────────────────
-export function TopNav({ displayName, photoURL, isManager, onLogout }) {
+export function TopNav({ displayName, photoURL, isManager, onLogout, previewMode, onPreview, hasMembers }) {
   return (
     <div className="topnav">
       <div className="topnav-logo">team<em>pulse</em></div>
@@ -87,7 +87,14 @@ export function TopNav({ displayName, photoURL, isManager, onLogout }) {
         ) : (
           <div className="avatar avatar-sm" style={{ background: "var(--accent)" }}>{initials(displayName)}</div>
         )}
-        {isManager && <span className="badge badge-manager">Manager</span>}
+        {isManager && !previewMode && (
+          <button className="btn btn-ghost btn-sm" onClick={onPreview} disabled={!hasMembers}
+            title={hasMembers ? "Preview the app as a team member" : "Add members first to use preview"}
+            style={{ color: "var(--accent)", borderColor: "var(--accent)", opacity: hasMembers ? 1 : 0.4 }}>
+            👁 Preview as member
+          </button>
+        )}
+        {isManager && !previewMode && <span className="badge badge-manager">Manager</span>}
         <button className="btn btn-ghost btn-sm" onClick={onLogout}>Sign out</button>
       </div>
     </div>
