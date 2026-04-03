@@ -18,6 +18,13 @@ const OUTCOME_STYLE = {
   "Blocked":    { bg: "var(--red-bg)",   color: "var(--red)",   bd: "var(--red-bd)"   },
 };
 
+const PRIORITIES = ["High", "Medium", "Low"];
+const PRIORITY_STYLE = {
+  "High":   { color: "var(--red)",   bg: "var(--red-bg)",   bd: "var(--red-bd)"   },
+  "Medium": { color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
+  "Low":    { color: "var(--blue)",  bg: "var(--blue-bg)",  bd: "var(--blue-bd)"  },
+};
+
 function fmtTime(ts) {
   if (!ts) return null;
   return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
