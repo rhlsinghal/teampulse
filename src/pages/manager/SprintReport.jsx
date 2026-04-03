@@ -154,10 +154,14 @@ export default function SprintReport() {
     const textareas = reportRef.current.querySelectorAll("textarea.ann-ta");
     const values    = Array.from(textareas).map(ta => ta.value);
     let idx = 0;
-    return html.replace(/<textarea([^<]*?ann-ta[^<]*?)><\/textarea>/g, (match, attrs) => {
+    // Match ALL ann-ta textareas — empty OR already containing content (e.g. from a draft).
+    // Previous regex only matched empty ones (><\/textarea>) which caused two bugs:
+    //   1. Index mismatch: DOM idx included filled textareas but regex idx skipped them
+    //      → wrong value written to wrong textarea (cross-contamination)
+    //   2. Draft edits lost: edits to pre-filled draft textareas were never captured
+    return html.replace(/<textarea([^<]*?ann-ta[^<]*?)>([\s\S]*?)<\/textarea>/g, (match, attrs) => {
       const val = values[idx] || "";
       idx++;
-      if (!val) return match;
       const escaped = val.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       return `<textarea${attrs}>${escaped}</textarea>`;
     });
