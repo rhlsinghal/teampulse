@@ -151,20 +151,38 @@ export default function SprintReport() {
   // ── Build annotated HTML ───────────────────────────────────────────────────
   const buildAnnotatedHtml = () => {
     if (!reportRef.current || !html) return html;
+
+    // Capture textarea values (ann-ta)
     const textareas = reportRef.current.querySelectorAll("textarea.ann-ta");
-    const values    = Array.from(textareas).map(ta => ta.value);
-    let idx = 0;
-    // Match ALL ann-ta textareas — empty OR already containing content (e.g. from a draft).
-    // Previous regex only matched empty ones (><\/textarea>) which caused two bugs:
-    //   1. Index mismatch: DOM idx included filled textareas but regex idx skipped them
-    //      → wrong value written to wrong textarea (cross-contamination)
-    //   2. Draft edits lost: edits to pre-filled draft textareas were never captured
-    return html.replace(/<textarea([^<]*?ann-ta[^<]*?)>([\s\S]*?)<\/textarea>/g, (match, attrs) => {
-      const val = values[idx] || "";
-      idx++;
+    const taValues  = Array.from(textareas).map(ta => ta.value);
+
+    // Capture select values (ann-sel — bug category dropdowns)
+    const selects   = reportRef.current.querySelectorAll("select.ann-sel");
+    const selValues = Array.from(selects).map(s => s.value);
+
+    // Replace all ann-ta textareas (empty or pre-filled) with current DOM values
+    let taIdx = 0;
+    let result = html.replace(/<textarea([^<]*?ann-ta[^<]*?)>([\s\S]*?)<\/textarea>/g, (match, attrs) => {
+      const val     = taValues[taIdx] || "";
+      taIdx++;
       const escaped = val.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       return `<textarea${attrs}>${escaped}</textarea>`;
     });
+
+    // Replace ann-sel select values — set selected attribute on matching option
+    let selIdx = 0;
+    result = result.replace(/<select([^<]*?ann-sel[^<]*?)>([\s\S]*?)<\/select>/g, (match, attrs, inner) => {
+      const val     = selValues[selIdx] || "";
+      selIdx++;
+      const updated = inner.replace(/<option([^>]*)>([\s\S]*?)<\/option>/g, (om, oAttrs, oText) => {
+        const cleanAttrs = oAttrs.replace(/\s*selected(?:="[^"]*")?/g, "").trim();
+        const sel        = oText.trim() === val || oAttrs.includes(`value="${val}"`) ? " selected" : "";
+        return `<option${cleanAttrs ? " " + cleanAttrs : ""}${sel}>${oText}</option>`;
+      });
+      return `<select${attrs}>${updated}</select>`;
+    });
+
+    return result;
   };
 
   // ── Draft helpers ──────────────────────────────────────────────────────────
