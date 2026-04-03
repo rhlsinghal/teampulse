@@ -54,39 +54,36 @@ function SODReadOnly({ sod }) {
         </div>
       </div>
       <div className="field-label mb-8">Tasks planned</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {(sod.tasks || []).map((t, i) => (
-          <div key={i} style={{ border: "0.5px solid var(--border)", borderRadius: 8, padding: "9px 10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-              {t.client
-                ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
-                : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
-              <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{t.text || "—"}</span>
-              {t.priority && (() => {
-                const ps = PRIORITY_STYLE[t.priority];
-                return ps ? <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority}</span> : null;
-              })()}
-              {t.blocker?.trim() && (
-                <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>
-                  ⚑ {t.blocker}
-                </span>
-              )}
-            </div>
-            {(t.startDate || t.dueDate || t.endDate) && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                {[["Start", t.startDate], ["Due", t.dueDate], ["End", t.endDate]].map(([lbl, val], di) => val ? (
-                  <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 0 }}>
-                    {di > 0 && <span style={{ color: "var(--faint)", fontSize: 10, marginRight: 6 }}>→</span>}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface)", padding: "2px 8px", borderRadius: 5, border: "0.5px solid var(--border)" }}>
-                      <span style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{lbl}</span>
-                      <span style={{ fontSize: 11, color: "var(--text)", fontFamily: "JetBrains Mono, monospace" }}>{val}</span>
-                    </div>
-                  </div>
-                ) : null)}
-              </div>
-            )}
-          </div>
-        ))}
+      <div style={{ overflowX: "auto" }}>
+        <table className="task-table" style={{ minWidth: 700 }}>
+          <thead>
+            <tr>
+              <th style={{ width: 90 }}>Client</th>
+              <th style={{ width: 75 }}>Priority</th>
+              <th>Task</th>
+              <th style={{ width: 96 }}>Start</th>
+              <th style={{ width: 96 }}>Due</th>
+              <th style={{ width: 96 }}>End</th>
+              <th style={{ width: 160 }}>Blocker / notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(sod.tasks || []).map((t, i) => {
+              const ps = PRIORITY_STYLE[t.priority || "Medium"];
+              return (
+                <tr key={i}>
+                  <td>{t.client ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span> : <span style={{ color: "var(--faint)" }}>—</span>}</td>
+                  <td><span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority || "Medium"}</span></td>
+                  <td style={{ fontSize: 12, fontWeight: 500 }}>{t.text || "—"}</td>
+                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.startDate || <span style={{ color: "var(--faint)" }}>—</span>}</td>
+                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.dueDate || <span style={{ color: "var(--faint)" }}>—</span>}</td>
+                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.endDate || <span style={{ color: "var(--faint)" }}>—</span>}</td>
+                  <td>{t.blocker?.trim() ? <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>⚑ {t.blocker}</span> : <span style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic" }}>—</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </>
   );
@@ -165,10 +162,6 @@ export default function TodayUpdate({ memberName }) {
   const carryCount = (eodData?.tasks || []).filter(t => t.outcome === "Carry over").length;
 
   // Shared date strip style
-  const datePillStyle = { display: "flex", alignItems: "center", gap: 4, background: "var(--surface)", padding: "3px 8px", borderRadius: 5, border: "0.5px solid var(--border)" };
-  const dateLblStyle  = { fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.06em" };
-  const dateInputStyle = { border: "none", background: "transparent", padding: 0, fontSize: 10, fontFamily: "JetBrains Mono, monospace", color: "var(--text)", outline: "none", width: 94 };
-
   return (
     <div className="main-content">
       <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>Today's update</div>
@@ -228,65 +221,68 @@ export default function TodayUpdate({ memberName }) {
                 <button className="btn btn-ghost btn-sm" onClick={addSODTask}>＋ Add task</button>
               </div>
 
-              {/* Task cards */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-                {sodForm.tasks.map((t, i) => (
-                  <div key={i} style={{ border: "0.5px solid var(--border)", borderRadius: 8, padding: "9px 10px" }}>
-                    {/* Row 1: client + task name + delete */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                      <input className="task-cell-input" placeholder="Client..." value={t.client}
-                        onChange={e => updateSODTask(i, "client", e.target.value)}
-                        style={{ width: 90, flexShrink: 0 }} />
-                      <input className="task-cell-input" placeholder="Task description..." value={t.text}
-                        onChange={e => updateSODTask(i, "text", e.target.value)}
-                        style={{ flex: 1, fontWeight: t.text ? 500 : 400 }} />
-                      <div className="task-del" onClick={() => removeSODTask(i)}>×</div>
-                    </div>
-                    {/* Row 2: date strip */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                      {[["Start", "startDate"], ["Due", "dueDate"], ["End", "endDate"]].map(([lbl, field], di) => (
-                        <div key={field} style={{ display: "flex", alignItems: "center", gap: 0 }}>
-                          {di > 0 && <span style={{ color: "var(--faint)", fontSize: 11, marginRight: 6 }}>→</span>}
-                          <div style={datePillStyle}>
-                            <span style={dateLblStyle}>{lbl}</span>
-                            <input type="date" value={t[field] || ""} onChange={e => updateSODTask(i, field, e.target.value)} style={dateInputStyle} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Row 3: priority + blocker */}
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <div style={{ flexShrink: 0, width: 120 }}>
-                        <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--faint)", marginBottom: 4 }}>Priority</div>
-                        <select
-                          value={t.priority || "Medium"}
-                          onChange={e => updateSODTask(i, "priority", e.target.value)}
-                          style={{
-                            width: "100%", fontSize: 11, padding: "4px 7px", borderRadius: 6,
-                            border: `0.5px solid ${PRIORITY_STYLE[t.priority || "Medium"]?.bd || "var(--border)"}`,
-                            background: PRIORITY_STYLE[t.priority || "Medium"]?.bg || "var(--surface)",
-                            color: PRIORITY_STYLE[t.priority || "Medium"]?.color || "var(--text)",
-                            fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
-                          }}>
-                          {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--faint)", marginBottom: 4 }}>Blocker / dependency</div>
-                        <input className="task-cell-input"
-                          value={t.blocker}
-                          placeholder="Any blocker? Leave blank if none"
-                          onChange={e => updateSODTask(i, "blocker", e.target.value)}
-                          style={{
-                            width: "100%", fontSize: 11,
-                            ...(t.blocker?.trim()
-                              ? { color: "var(--red)", background: "var(--red-bg)", borderColor: "var(--red-bd)" }
-                              : { color: "var(--faint)", fontStyle: "italic" })
-                          }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              {/* Task table — Option B flat layout */}
+              <div style={{ overflowX: "auto", marginBottom: 12 }}>
+                <table className="task-table" style={{ minWidth: 760 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 90 }}>Client</th>
+                      <th style={{ width: 80 }}>Priority</th>
+                      <th style={{ minWidth: 240 }}>Task</th>
+                      <th style={{ width: 110 }}>Start date</th>
+                      <th style={{ width: 110 }}>Due date</th>
+                      <th style={{ width: 110 }}>End date</th>
+                      <th style={{ minWidth: 170 }}>Blocker / notes</th>
+                      <th style={{ width: 28 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sodForm.tasks.map((t, i) => {
+                      const ps = PRIORITY_STYLE[t.priority || "Medium"];
+                      return (
+                        <tr key={i}>
+                          <td>
+                            <input className="task-cell-input" placeholder="Client..." value={t.client}
+                              onChange={e => updateSODTask(i, "client", e.target.value)} />
+                          </td>
+                          <td>
+                            <select value={t.priority || "Medium"}
+                              onChange={e => updateSODTask(i, "priority", e.target.value)}
+                              style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 6, border: `0.5px solid ${ps?.bd || "var(--border)"}`, background: ps?.bg || "var(--surface)", color: ps?.color || "var(--text)", fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+                              {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                          </td>
+                          <td>
+                            <input className="task-cell-input" placeholder="What are you working on?" value={t.text}
+                              onChange={e => updateSODTask(i, "text", e.target.value)}
+                              style={{ fontWeight: t.text ? 500 : 400 }} />
+                          </td>
+                          <td>
+                            <input type="date" className="task-cell-input" value={t.startDate || ""}
+                              onChange={e => updateSODTask(i, "startDate", e.target.value)}
+                              style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
+                          </td>
+                          <td>
+                            <input type="date" className="task-cell-input" value={t.dueDate || ""}
+                              onChange={e => updateSODTask(i, "dueDate", e.target.value)}
+                              style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
+                          </td>
+                          <td>
+                            <input type="date" className="task-cell-input" value={t.endDate || ""}
+                              onChange={e => updateSODTask(i, "endDate", e.target.value)}
+                              style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
+                          </td>
+                          <td>
+                            <input className="task-cell-input" value={t.blocker} placeholder="Leave blank if none"
+                              onChange={e => updateSODTask(i, "blocker", e.target.value)}
+                              style={{ fontSize: 11, ...(t.blocker?.trim() ? { color: "var(--red)", background: "var(--red-bg)", borderColor: "var(--red-bd)" } : { color: "var(--faint)", fontStyle: "italic" }) }} />
+                          </td>
+                          <td><div className="task-del" onClick={() => removeSODTask(i)}>×</div></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </>
           )}
