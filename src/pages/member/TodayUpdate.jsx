@@ -161,7 +161,7 @@ export default function TodayUpdate({ memberName }) {
 
   // EOD helpers
   const updateEODTask = (i, field, val) => setEODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
-  const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", fromSOD: false, outcome: "Done", carryOver: false, notes: "" }] }));
+  const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", fromSOD: false, adhoc: true, priority: "Medium", startDate: TODAY, dueDate: "", outcome: "Done", carryOver: false, notes: "", blockerDetail: "", blockerOwner: "" }] }));
   const removeEODTask = (i) => setEODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
   const handleSaveSOD = async () => {
@@ -371,38 +371,52 @@ export default function TodayUpdate({ memberName }) {
                 <table className="task-table" style={{ minWidth: 700 }}>
                   <thead>
                     <tr>
-                      <th style={{ minWidth: 200 }}>Task</th>
+                      <th style={{ width: 110 }}>Client</th>
+                      <th style={{ width: 95 }}>Priority</th>
+                      <th style={{ minWidth: 220 }}>Task</th>
                       <th style={{ width: 115 }}>Outcome</th>
-                      <th style={{ width: 110 }}>Start date</th>
-                      <th style={{ width: 110 }}>Due date</th>
-                      <th style={{ width: 110 }}>End date</th>
+                      <th style={{ width: 108 }}>Start date</th>
+                      <th style={{ width: 108 }}>Due date</th>
+                      <th style={{ width: 108 }}>End date</th>
                       <th style={{ width: 28 }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {eodForm.tasks.map((t, i) => {
-                      const s       = OUTCOME_STYLE[t.outcome] || OUTCOME_STYLE["Done"];
-                      const isExtra = !t.fromSOD;
+                      const s         = OUTCOME_STYLE[t.outcome] || OUTCOME_STYLE["Done"];
+                      const isAdhoc   = !t.fromSOD;
                       const isDuePast = t.dueDate && t.dueDate < TODAY && t.outcome !== "Done";
-                      const ps      = PRIORITY_STYLE[t.priority || "Medium"];
+                      const ps        = PRIORITY_STYLE[t.priority || "Medium"];
                       return (
-                        <tr key={i} style={{ background: isExtra ? "var(--amber-bg)" : "transparent" }}>
+                        <tr key={i} style={{ background: isAdhoc ? "#fffbeb" : "transparent" }}>
+                          {/* Client */}
                           <td>
-                            {isExtra ? (
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <input className="task-cell-input" placeholder="Client..." value={t.client}
-                                  onChange={e => updateEODTask(i, "client", e.target.value)} style={{ width: 80 }} />
-                                <input className="task-cell-input" placeholder="Task description..."
-                                  value={t.text} onChange={e => updateEODTask(i, "text", e.target.value)} />
-                              </div>
-                            ) : (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                {t.client && <span className="badge badge-blue" style={{ fontSize: 10 }}>{t.client}</span>}
-                                {ps && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority}</span>}
-                                <span style={{ fontSize: 12, fontWeight: 500 }}>{t.text || "—"}</span>
-                              </div>
-                            )}
+                            {isAdhoc
+                              ? <input className="task-cell-input" placeholder="Client..." value={t.client}
+                                  onChange={e => updateEODTask(i, "client", e.target.value)} />
+                              : t.client
+                                ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
+                                : <span style={{ color: "var(--faint)" }}>—</span>}
                           </td>
+                          {/* Priority */}
+                          <td>
+                            {isAdhoc
+                              ? <select value={t.priority || "Medium"}
+                                  onChange={e => updateEODTask(i, "priority", e.target.value)}
+                                  style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 6, border: `0.5px solid ${ps?.bd}`, background: ps?.bg, color: ps?.color, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+                                  {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                              : ps && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority}</span>}
+                          </td>
+                          {/* Task */}
+                          <td>
+                            {isAdhoc
+                              ? <input className="task-cell-input" placeholder="What did you work on?" value={t.text}
+                                  onChange={e => updateEODTask(i, "text", e.target.value)}
+                                  style={{ fontWeight: t.text ? 500 : 400 }} />
+                              : <span style={{ fontSize: 12, fontWeight: 500 }}>{t.text || "—"}</span>}
+                          </td>
+                          {/* Outcome */}
                           <td>
                             <select value={t.outcome}
                               onChange={e => { const v = e.target.value; updateEODTask(i, "outcome", v); updateEODTask(i, "carryOver", v === "Carry over"); }}
@@ -410,23 +424,33 @@ export default function TodayUpdate({ memberName }) {
                               {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                           </td>
-                          <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>
-                            {t.startDate || <span style={{ color: "var(--faint)" }}>—</span>}
-                          </td>
+                          {/* Start date */}
                           <td>
-                            <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: isDuePast ? 500 : 400, color: isDuePast ? "var(--red)" : "var(--muted)", background: isDuePast ? "var(--red-bg)" : "transparent", padding: isDuePast ? "1px 6px" : 0, borderRadius: isDuePast ? 4 : 0 }}>
-                              {t.dueDate || <span style={{ color: "var(--faint)" }}>—</span>}
-                              {isDuePast && " ⚠"}
-                            </span>
+                            {isAdhoc
+                              ? <input type="date" className="task-cell-input" value={t.startDate || ""}
+                                  onChange={e => updateEODTask(i, "startDate", e.target.value)}
+                                  style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
+                              : <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.startDate || <span style={{ color: "var(--faint)" }}>—</span>}</span>}
                           </td>
+                          {/* Due date */}
+                          <td>
+                            {isAdhoc
+                              ? <input type="date" className="task-cell-input" value={t.dueDate || ""}
+                                  onChange={e => updateEODTask(i, "dueDate", e.target.value)}
+                                  style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
+                              : <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: isDuePast ? 500 : 400, color: isDuePast ? "var(--red)" : "var(--muted)", background: isDuePast ? "var(--red-bg)" : "transparent", padding: isDuePast ? "1px 6px" : 0, borderRadius: isDuePast ? 4 : 0 }}>
+                                  {t.dueDate || <span style={{ color: "var(--faint)" }}>—</span>}
+                                  {isDuePast && " ⚠"}
+                                </span>}
+                          </td>
+                          {/* End date */}
                           <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
                             {t.outcome === "Done"
                               ? <span style={{ color: "var(--green)", fontWeight: 500 }}>{t.endDate || TODAY}</span>
                               : <span style={{ color: "var(--faint)" }}>—</span>}
                           </td>
-                          <td>
-                            {isExtra && <div className="task-del" onClick={() => removeEODTask(i)}>×</div>}
-                          </td>
+                          {/* Delete — only for ad-hoc */}
+                          <td>{isAdhoc && <div className="task-del" onClick={() => removeEODTask(i)}>×</div>}</td>
                         </tr>
                       );
                     })}
@@ -486,12 +510,7 @@ export default function TodayUpdate({ memberName }) {
                 </div>
               )}
 
-              {/* Add extra task */}
-              <div style={{ marginBottom: 14 }}>
-                <button className="btn btn-ghost btn-sm" onClick={addEODTask} style={{ fontSize: 11, color: "var(--muted)" }}>
-                  ＋ Add task not in SOD
-                </button>
-              </div>
+
 
               {/* Completion bar */}
               {eodForm.tasks.length > 0 && (() => {
@@ -515,11 +534,14 @@ export default function TodayUpdate({ memberName }) {
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderTop: "0.5px solid var(--border)", marginTop: 4 }}>
+<button className="btn btn-ghost btn-sm" onClick={addEODTask}>＋ Add task</button>
+            <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-ghost" onClick={() => setEODForm(f => ({ ...f, tasks: f.tasks.map(t => ({ ...t, outcome: "Done", notes: "", blockerDetail: "", blockerOwner: "" })) }))}>Reset outcomes</button>
               <button className="btn btn-primary" onClick={handleSaveEOD} disabled={saving}
                 style={{ background: "var(--green)", borderColor: "var(--green)" }}>
                 {saving ? <><Spinner white /> Saving...</> : eodSubmitted ? "Update EOD" : "Submit EOD"}
               </button>
+            </div>
             </div>
           </>
         )}
