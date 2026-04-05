@@ -585,6 +585,18 @@ export default function SprintReport() {
                   }
                 };
               }
+              if (el && !window.bugFilterM) {
+                window.bugFilterM = function(type) {
+                  var blocks = el.querySelectorAll("#bug-list-m .bug-block");
+                  blocks.forEach(function(b) {
+                    var status = b.getAttribute("data-status");
+                    b.style.display = (type === "all" || status === type) ? "" : "none";
+                  });
+                  el.querySelectorAll(".bf-btn").forEach(function(btn) {
+                    btn.classList.toggle("bf-active", btn.getAttribute("onclick") === "bugFilterM('" + type + "')");
+                  });
+                };
+              }
             }}
           />
         </div>
