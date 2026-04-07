@@ -20,6 +20,35 @@ function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
+// ── Completion ring ───────────────────────────────────────────────────────────
+function Ring({ pct, done, total, color }) {
+  const r = 16;
+  const circ = 2 * Math.PI * r;
+  const fill = pct != null ? (circ * pct) / 100 : 0;
+  const ringColor = pct == null ? "var(--border)"
+    : pct === 100 ? "var(--green)"
+    : color || "var(--accent)";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
+      <svg width="44" height="44" viewBox="0 0 44 44" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="22" cy="22" r={r} fill="none" stroke="var(--border)" strokeWidth="4" />
+        {pct != null && pct > 0 && (
+          <circle cx="22" cy="22" r={r} fill="none" stroke={ringColor} strokeWidth="4"
+            strokeDasharray={`${fill} ${circ}`} strokeLinecap="round" />
+        )}
+        <text x="22" y="26" textAnchor="middle" fontSize="9" fontWeight="500"
+          fill={pct == null ? "var(--faint)" : ringColor}
+          style={{ transform: "rotate(90deg)", transformOrigin: "22px 22px" }}>
+          {pct != null ? `${pct}%` : "SOD"}
+        </text>
+      </svg>
+      <span style={{ fontSize: 9, color: "var(--muted)", whiteSpace: "nowrap" }}>
+        {pct != null ? `${done}/${total}` : "only"}
+      </span>
+    </div>
+  );
+}
+
 // ── Member card ───────────────────────────────────────────────────────────────
 function MemberCard({ member, entry, onViewProfile }) {
   const color        = avatarColor(member.name);
@@ -35,7 +64,6 @@ function MemberCard({ member, entry, onViewProfile }) {
   const sodTasks = sod?.tasks || [];
   const eodTasks = eod?.tasks || [];
 
-  // Merge SOD dates into EOD for display
   const displayTasks = eodSubmitted
     ? eodTasks.map((t, i) => ({
         ...t,
@@ -45,47 +73,70 @@ function MemberCard({ member, entry, onViewProfile }) {
       }))
     : sodTasks;
 
-  const total    = displayTasks.filter(t => t.text?.trim()).length;
-  const done     = displayTasks.filter(t => t.outcome === "Done").length;
-  const blocked  = displayTasks.filter(t => t.outcome === "Blocked").length;
-  const carry    = displayTasks.filter(t => t.outcome === "Carry over").length;
+  const validTasks = displayTasks.filter(t => t.text?.trim());
+  const total    = validTasks.length;
+  const done     = validTasks.filter(t => t.outcome === "Done").length;
+  const blocked  = validTasks.filter(t => t.outcome === "Blocked").length;
+  const carry    = validTasks.filter(t => t.outcome === "Carry over").length;
   const pct      = eodSubmitted && total ? Math.round(done / total * 100) : null;
 
-  // Border colour signal
-  const borderColor = !hasToday
-    ? "var(--amber-bd)"
-    : blocked > 0 ? "var(--red-bd)" : "var(--border)";
+  // Top strip colour
+  const stripColor = !hasToday ? "#FAC775"
+    : blocked > 0  ? "var(--red)"
+    : eodSubmitted && pct === 100 ? "var(--green)"
+    : eodSubmitted ? "var(--accent)"
+    : sodSubmitted ? "#378ADD"
+    : "#FAC775";
+
+  // Card border
+  const borderColor = !hasToday ? "var(--amber-bd)"
+    : blocked > 0  ? "var(--red-bd)"
+    : "var(--border)";
+
+  // Top blocker or top task for bottom strip
+  const topBlocker = validTasks.find(t => t.outcome === "Blocked");
+  const topTask    = validTasks[0];
 
   return (
     <div onClick={() => onViewProfile(member.name)}
       style={{ border: `0.5px solid ${borderColor}`, borderRadius: 12, overflow: "hidden",
-        cursor: "pointer", background: "var(--surface)", display: "flex", flexDirection: "column" }}>
+        cursor: "pointer", background: "var(--surface)", display: "flex", flexDirection: "column",
+        transition: "border-color 0.15s" }}>
 
-      {/* ── Header ── */}
-      <div style={{ padding: "11px 13px", display: "flex", alignItems: "center", gap: 9,
-        background: !hasToday ? "var(--amber-bg)" : "var(--surface)",
-        borderBottom: "0.5px solid var(--border)" }}>
-        <div style={{ width: 34, height: 34, borderRadius: 8, background: color + "22", color,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 11, fontWeight: 500, flexShrink: 0 }}>
-          {initials(member.name)}
+      {/* Coloured top strip */}
+      <div style={{ height: 3, background: stripColor, flexShrink: 0 }} />
+
+      {/* Main body */}
+      <div style={{ padding: "11px 13px", display: "flex", gap: 11, alignItems: "flex-start", flex: 1 }}>
+
+        {/* Left: avatar + bandwidth */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: color + "22", color,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 500 }}>
+            {initials(member.name)}
+          </div>
+          {bwL && hasToday && (
+            <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 20, fontWeight: 500,
+              color: bwS.color, background: bwS.bg, border: `0.5px solid ${bwS.bd}`, whiteSpace: "nowrap" }}>
+              {bwL}
+            </span>
+          )}
         </div>
+
+        {/* Middle: name + badges + task pills */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{member.name}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-            {/* Bandwidth */}
-            {bwL && hasToday && (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                color: bwS.color, background: bwS.bg, border: `0.5px solid ${bwS.bd}` }}>{bwL}</span>
-            )}
-            {/* SOD */}
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, color: hasToday ? "var(--text)" : "var(--muted)" }}>
+            {member.name}
+          </div>
+
+          {/* Submission badges */}
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: hasToday && total > 0 ? 8 : 0 }}>
             {sodSubmitted && (
               <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
                 background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>
                 SOD {fmtTime(sod.submittedAt)}
               </span>
             )}
-            {/* EOD */}
             {eodSubmitted ? (
               <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
                 background: "var(--green-bg)", color: "var(--green)", border: "0.5px solid var(--green-bd)" }}>
@@ -102,137 +153,78 @@ function MemberCard({ member, entry, onViewProfile }) {
                 Not submitted
               </span>
             ) : null}
-            {/* Blocker */}
-            {blocked > 0 && (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                background: "var(--red-bg)", color: "var(--red)", border: "0.5px solid var(--red-bd)" }}>
-                ⚑ {blocked} blocker{blocked > 1 ? "s" : ""}
-              </span>
-            )}
           </div>
-        </div>
-        {/* Completion */}
-        {pct != null && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-            <span style={{ fontSize: 10, fontWeight: 500,
-              color: pct === 100 ? "var(--green)" : "var(--accent)" }}>{pct}%</span>
-            <div style={{ width: 50, height: 3, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, borderRadius: 2,
-                background: pct === 100 ? "var(--green)" : "var(--accent)" }} />
+
+          {/* Outcome pills — only when EOD submitted */}
+          {eodSubmitted && total > 0 && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {done  > 0 && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5,
+                background: "var(--green-bg)", color: "var(--green)" }}>✓ {done} done</span>}
+              {carry > 0 && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5,
+                background: "var(--amber-bg)", color: "var(--amber)" }}>↪ {carry} carry</span>}
+              {blocked > 0 && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5,
+                background: "var(--red-bg)", color: "var(--red)" }}>⚑ {blocked} blocked</span>}
             </div>
-          </div>
+          )}
+
+          {/* SOD-only task count */}
+          {sodSubmitted && !eodSubmitted && total > 0 && (
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>{total} task{total !== 1 ? "s" : ""} planned</div>
+          )}
+
+          {/* Not submitted */}
+          {!hasToday && (
+            <div style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic", marginTop: 2 }}>
+              Last entry: {entry ? fmt(entry.date) : "never"}
+            </div>
+          )}
+        </div>
+
+        {/* Right: completion ring */}
+        {hasToday && (sodSubmitted || eodSubmitted) && (
+          <Ring
+            pct={pct}
+            done={done}
+            total={total}
+            color={blocked > 0 ? "var(--red)" : "var(--accent)"}
+          />
         )}
       </div>
 
-      {/* ── Not submitted ── */}
-      {!hasToday && (
-        <div style={{ padding: "12px 13px", fontSize: 12, color: "var(--faint)", fontStyle: "italic", flex: 1 }}>
-          No update today · Last: {entry ? fmt(entry.date) : "never"}
-        </div>
-      )}
-
-      {/* ── Task table ── */}
-      {hasToday && total > 0 && (
-        <div style={{ overflowX: "auto", flex: 1 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
-            <thead>
-              <tr style={{ background: "var(--bg)" }}>
-                {[
-                  { label: "Task",       w: undefined },
-                  { label: "Priority",   w: 70  },
-                  { label: "Start",      w: 82  },
-                  { label: "Due",        w: 82  },
-                  { label: "End",        w: 82  },
-                  { label: eodSubmitted ? "Outcome" : "", w: 90 },
-                ].filter(h => h.label).map((h, i) => (
-                  <th key={i} style={{ textAlign: "left", fontSize: 9, fontWeight: 500,
-                    textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)",
-                    padding: "5px 10px", borderBottom: "0.5px solid var(--border)",
-                    width: h.w, whiteSpace: "nowrap" }}>
-                    {h.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {displayTasks.filter(t => t.text?.trim()).map((t, i) => {
-                const ps = PRIORITY_STYLE[t.priority || "Medium"];
-                const os = OUTCOME_STYLE[t.outcome];
-                const overdue = t.dueDate && t.dueDate < TODAY && t.outcome !== "Done";
-                return (
-                  <tr key={i} style={{ borderTop: "0.5px solid var(--border)",
-                    background: t.outcome === "Blocked" ? "var(--red-bg)"
-                      : t.adhoc ? "#fffbeb" : "transparent" }}>
-                    <td style={{ padding: "6px 10px", minWidth: 120 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                        {t.client && (
-                          <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 10, fontWeight: 500,
-                            background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)",
-                            whiteSpace: "nowrap" }}>{t.client}</span>
-                        )}
-                        <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.4 }}>{t.text}</span>
-                        {t.adhoc && (
-                          <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 8,
-                            background: "#fffbeb", color: "#854F0B", border: "0.5px solid #FAC775" }}>ad-hoc</span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: "6px 10px" }}>
-                      <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                        color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}`,
-                        whiteSpace: "nowrap" }}>{t.priority || "Medium"}</span>
-                    </td>
-                    <td style={{ padding: "6px 10px", fontSize: 10,
-                      fontFamily: "JetBrains Mono, monospace", color: "var(--muted)", whiteSpace: "nowrap" }}>
-                      {t.startDate || "—"}
-                    </td>
-                    <td style={{ padding: "6px 10px", whiteSpace: "nowrap" }}>
-                      {t.dueDate ? (
-                        <span style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace",
-                          color: overdue ? "var(--red)" : "var(--muted)",
-                          background: overdue ? "var(--red-bg)" : "transparent",
-                          padding: overdue ? "1px 4px" : 0, borderRadius: overdue ? 3 : 0,
-                          fontWeight: overdue ? 500 : 400 }}>
-                          {t.dueDate}{overdue ? " ⚠" : ""}
-                        </span>
-                      ) : <span style={{ fontSize: 10, color: "var(--faint)" }}>—</span>}
-                    </td>
-                    <td style={{ padding: "6px 10px", fontSize: 10,
-                      fontFamily: "JetBrains Mono, monospace",
-                      color: t.endDate ? "var(--green)" : "var(--faint)", whiteSpace: "nowrap" }}>
-                      {t.endDate || "—"}
-                    </td>
-                    {eodSubmitted && (
-                      <td style={{ padding: "6px 10px" }}>
-                        {os ? (
-                          <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-                            color: os.color, background: os.bg, border: `0.5px solid ${os.bd}`,
-                            whiteSpace: "nowrap" }}>{t.outcome}</span>
-                        ) : <span style={{ fontSize: 10, color: "var(--faint)" }}>—</span>}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* ── Summary footer ── */}
-      {hasToday && total > 0 && (
-        <div style={{ padding: "7px 13px", borderTop: "0.5px solid var(--border)",
-          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-          background: "var(--bg)" }}>
-          <span style={{ fontSize: 10, color: "var(--muted)" }}>{total} task{total !== 1 ? "s" : ""}</span>
-          {eodSubmitted && (
+      {/* Bottom strip — top blocker or top task */}
+      {hasToday && (topBlocker || topTask) && (
+        <div style={{ borderTop: "0.5px solid var(--border)", padding: "6px 13px",
+          background: topBlocker ? "var(--red-bg)" : "var(--bg)",
+          display: "flex", alignItems: "center", gap: 7 }}>
+          {topBlocker ? (
             <>
-              {done > 0    && <span style={{ fontSize: 10, color: "var(--green)" }}>✓ {done} done</span>}
-              {carry > 0   && <span style={{ fontSize: 10, color: "var(--amber)" }}>↪ {carry} carry</span>}
-              {blocked > 0 && <span style={{ fontSize: 10, color: "var(--red)" }}>⚑ {blocked} blocked</span>}
+              <span style={{ fontSize: 10, color: "var(--red)", flexShrink: 0 }}>⚑</span>
+              <span style={{ fontSize: 11, color: "var(--red)", flex: 1,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {topBlocker.text}{topBlocker.blockerDetail ? ` — ${topBlocker.blockerDetail}` : ""}
+              </span>
+            </>
+          ) : (
+            <>
+              {topTask.client && (
+                <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 10, fontWeight: 500,
+                  background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)",
+                  flexShrink: 0, whiteSpace: "nowrap" }}>{topTask.client}</span>
+              )}
+              <span style={{ fontSize: 11, color: "var(--muted)", flex: 1,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {topTask.text}
+              </span>
+              {topTask.priority && (() => {
+                const ps = PRIORITY_STYLE[topTask.priority];
+                return ps ? (
+                  <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
+                    color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}`,
+                    flexShrink: 0 }}>{topTask.priority}</span>
+                ) : null;
+              })()}
             </>
           )}
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--faint)" }}>Click to view profile →</span>
         </div>
       )}
     </div>
@@ -262,7 +254,9 @@ export default function TeamOverview({ members, onViewProfile }) {
     <div className="main-content">
       <div style={{ textAlign: "center", padding: "60px 24px", color: "var(--muted)" }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>👥</div>
-        <div style={{ fontSize: 13, lineHeight: 1.8 }}>No team members yet.<br />Go to <strong>Allowed Users</strong> to invite your team.</div>
+        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+          No team members yet.<br />Go to <strong>Allowed Users</strong> to invite your team.
+        </div>
       </div>
     </div>
   );
@@ -272,8 +266,8 @@ export default function TeamOverview({ members, onViewProfile }) {
   const blockedMembers = members.filter(m => {
     const e = latest[m.name];
     if (e?.date !== TODAY) return false;
-    return (e?.eod?.tasks || []).some(t => t.outcome === "Blocked") ||
-           (e?.sod?.tasks || []).some(t => t.blocker?.trim()) ||
+    return (e?.eod?.tasks  || []).some(t => t.outcome === "Blocked") ||
+           (e?.sod?.tasks  || []).some(t => t.blocker?.trim())       ||
            !!e?.blockers?.trim();
   });
 
@@ -300,9 +294,21 @@ export default function TeamOverview({ members, onViewProfile }) {
     setSlackSending(false);
   };
 
-  // Submitted first, then not submitted
+  // Sort: blocked first, then submitted, then not submitted
   const sorted = [
-    ...members.filter(m => latest[m.name]?.date === TODAY),
+    ...members.filter(m => {
+      const e = latest[m.name];
+      return e?.date === TODAY && (
+        (e?.eod?.tasks || []).some(t => t.outcome === "Blocked") ||
+        (e?.sod?.tasks || []).some(t => t.blocker?.trim())
+      );
+    }),
+    ...members.filter(m => {
+      const e = latest[m.name];
+      if (e?.date !== TODAY) return false;
+      return !(e?.eod?.tasks || []).some(t => t.outcome === "Blocked") &&
+             !(e?.sod?.tasks || []).some(t => t.blocker?.trim());
+    }),
     ...members.filter(m => latest[m.name]?.date !== TODAY),
   ];
 
@@ -312,6 +318,7 @@ export default function TeamOverview({ members, onViewProfile }) {
 
   return (
     <div className="main-content">
+      {/* Header */}
       <div className="flex justify-between items-start mb-16">
         <div>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>Team overview</div>
@@ -327,20 +334,40 @@ export default function TeamOverview({ members, onViewProfile }) {
         </div>
       </div>
 
+      {/* Stats */}
       <div className="stats-grid stats-grid-4 mb-16">
-        <div className="stat-card"><div className="stat-value" style={{ color: "var(--green)" }}>{submittedToday.length}</div><div className="stat-label">Submitted today</div></div>
-        <div className="stat-card"><div className="stat-value" style={{ color: "var(--faint)" }}>{notSubmitted.length}</div><div className="stat-label">Not submitted</div></div>
-        <div className="stat-card"><div className="stat-value" style={{ color: "var(--red)" }}>{blockedMembers.length}</div><div className="stat-label">Active blockers</div></div>
-        <div className="stat-card"><div className="stat-value" style={{ color: avgBwS.color, fontSize: 16, paddingTop: 2 }}>{avgBwLabel}</div><div className="stat-label">Avg bandwidth</div></div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: "var(--green)" }}>{submittedToday.length}</div>
+          <div className="stat-label">Submitted today</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: "var(--faint)" }}>{notSubmitted.length}</div>
+          <div className="stat-label">Not submitted</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: "var(--red)" }}>{blockedMembers.length}</div>
+          <div className="stat-label">Active blockers</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: avgBwS.color, fontSize: 16, paddingTop: 2 }}>
+            {avgBwLabel}
+          </div>
+          <div className="stat-label">Avg bandwidth</div>
+        </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* 2-col card grid */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {rows.map((row, ri) => (
-          <div key={ri} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+          <div key={ri} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "start" }}>
             {row.map(m => (
-              <MemberCard key={m.name} member={m} entry={latest[m.name]} onViewProfile={onViewProfile} />
+              <MemberCard
+                key={m.name}
+                member={m}
+                entry={latest[m.name]}
+                onViewProfile={onViewProfile}
+              />
             ))}
-            {/* Fill empty slot if odd number */}
             {row.length === 1 && <div />}
           </div>
         ))}
