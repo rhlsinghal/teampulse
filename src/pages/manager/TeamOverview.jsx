@@ -4,269 +4,46 @@ import { fmt, TODAY } from "../../utils/dates";
 import { loadAllMembersLatest } from "../../hooks/useHistory";
 import { Loading } from "../../components/index.jsx";
 
-const PRIORITY_STYLE = {
-  "High":   { color: "var(--red)",   bg: "var(--red-bg)",   bd: "var(--red-bd)"   },
-  "Medium": { color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
-  "Low":    { color: "var(--blue)",  bg: "var(--blue-bg)",  bd: "var(--blue-bd)"  },
-};
-const OUTCOME_STYLE = {
-  "Done":       { color: "var(--green)", bg: "var(--green-bg)", bd: "var(--green-bd)" },
-  "Carry over": { color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
-  "Blocked":    { color: "var(--red)",   bg: "var(--red-bg)",   bd: "var(--red-bd)"   },
-};
-
 function fmtTime(ts) {
   if (!ts) return null;
   return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
-function isDuePast(dueDate, outcome) {
-  return dueDate && dueDate < TODAY && outcome !== "Done";
+// ── Inline tri-bar (done / carry / blocked) ───────────────────────────────────
+function TriBar({ done, carry, blocked, total }) {
+  if (!total) return <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>;
+  const donePct    = Math.round(done    / total * 100);
+  const carryPct   = Math.round(carry   / total * 100);
+  const blockedPct = Math.round(blocked / total * 100);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      {[
+        { pct: donePct,    color: "var(--green)",  label: `${done} done`    },
+        { pct: carryPct,   color: "var(--amber)",  label: `${carry} carry`  },
+        { pct: blockedPct, color: "var(--red)",    label: `${blocked} blocked` },
+      ].map(({ pct, color, label }) => (
+        pct > 0 ? (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ flex: 1, height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${pct}%`, borderRadius: 2, background: color }} />
+            </div>
+            <span style={{ fontSize: 9, color, width: 56, whiteSpace: "nowrap" }}>{label}</span>
+          </div>
+        ) : null
+      ))}
+    </div>
+  );
 }
 
-// ── Member card ───────────────────────────────────────────────────────────────
-function MemberCard({ member, entry, onViewProfile }) {
-  const color      = avatarColor(member.name);
-  const hasToday   = entry?.date === TODAY;
-  const sod        = entry?.sod  || null;
-  const eod        = entry?.eod  || null;
-  const sodSubmitted = !!sod?.submittedAt;
-  const eodSubmitted = !!eod?.submittedAt;
-
-  const sodTasks = sod?.tasks || [];
-  const eodTasks = eod?.tasks || [];
-  const displayTasks = eodSubmitted
-    ? eodTasks.map((t, i) => ({
-        ...t,
-        priority:  t.priority  || sodTasks[i]?.priority  || "Medium",
-        startDate: t.startDate || sodTasks[i]?.startDate || "",
-        dueDate:   t.dueDate   || sodTasks[i]?.dueDate   || "",
-      }))
-    : sodTasks;
-
-  const doneCount    = displayTasks.filter(t => t.outcome === "Done").length;
-  const blockedCount = displayTasks.filter(t => t.outcome === "Blocked").length;
-  const carryCount   = displayTasks.filter(t => t.outcome === "Carry over").length;
-  const totalTasks   = displayTasks.filter(t => t.text?.trim()).length;
-  const pct          = eodSubmitted && totalTasks ? Math.round(doneCount / totalTasks * 100) : null;
-  const bw           = sod?.bandwidth || entry?.bandwidth;
-  const bwS          = BW_STYLES[bw] || BW_STYLES[3];
-  const bwL          = BANDWIDTH[bw]?.label;
-  const isLegacy     = !sod && entry;
-
+// ── Completion % circle ───────────────────────────────────────────────────────
+function PctBadge({ done, total, eodSubmitted }) {
+  if (!eodSubmitted || !total) return <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>;
+  const pct = Math.round(done / total * 100);
+  const color = pct === 100 ? "var(--green)" : pct > 50 ? "var(--accent)" : "var(--amber)";
   return (
-    <div style={{
-      border: "0.5px solid var(--border)", borderRadius: 12, overflow: "hidden",
-      borderColor: !hasToday ? "var(--amber-bd)" : blockedCount > 0 ? "var(--red-bd)" : "var(--border)",
-    }}>
-
-      {/* ── Card header ── */}
-      <div style={{
-        padding: "10px 14px", display: "flex", alignItems: "center", gap: 10,
-        background: !hasToday ? "var(--amber-bg)" : "var(--surface)",
-        borderBottom: "0.5px solid var(--border)",
-      }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 8, background: color + "22", color,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 11, fontWeight: 500, flexShrink: 0,
-        }}>
-          {initials(member.name)}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>{member.name}</span>
-            {bwL && hasToday && (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                color: bwS.color, background: bwS.bg, border: `0.5px solid ${bwS.bd}` }}>{bwL}</span>
-            )}
-            {sodSubmitted && (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>
-                SOD {fmtTime(sod.submittedAt)}
-              </span>
-            )}
-            {eodSubmitted ? (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                background: "var(--green-bg)", color: "var(--green)", border: "0.5px solid var(--green-bd)" }}>
-                EOD {fmtTime(eod.submittedAt)}
-              </span>
-            ) : sodSubmitted ? (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                background: "var(--amber-bg)", color: "var(--amber)", border: "0.5px solid var(--amber-bd)" }}>
-                EOD pending
-              </span>
-            ) : !hasToday ? (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                background: "var(--amber-bg)", color: "var(--amber)", border: "0.5px solid var(--amber-bd)" }}>
-                Not submitted
-              </span>
-            ) : null}
-            {blockedCount > 0 && (
-              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
-                background: "var(--red-bg)", color: "var(--red)", border: "0.5px solid var(--red-bd)" }}>
-                ⚑ {blockedCount} blocker{blockedCount > 1 ? "s" : ""}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          {pct != null && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ height: 4, width: 64, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct}%`, borderRadius: 2,
-                  background: pct === 100 ? "var(--green)" : "var(--accent)", transition: "width 0.3s" }} />
-              </div>
-              <span style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap" }}>{doneCount}/{totalTasks}</span>
-            </div>
-          )}
-          <button onClick={() => onViewProfile(member.name)}
-            style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, border: "0.5px solid var(--border)",
-              background: "transparent", color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
-            Profile →
-          </button>
-        </div>
-      </div>
-
-      {/* ── Not submitted ── */}
-      {!hasToday && (
-        <div style={{ padding: "14px", color: "var(--faint)", fontSize: 12, fontStyle: "italic" }}>
-          No update today · Last entry: {entry ? fmt(entry.date) : "never"}
-        </div>
-      )}
-
-      {/* ── Legacy ── */}
-      {isLegacy && hasToday && (
-        <div style={{ padding: "10px 14px" }}>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{entry.today || "—"}</div>
-          {entry.blockers && (
-            <div style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)",
-              padding: "4px 9px", borderRadius: 5, border: "0.5px solid var(--red-bd)" }}>
-              ⚑ {entry.blockers}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Task table ── */}
-      {hasToday && !isLegacy && totalTasks > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
-            <thead>
-              <tr style={{ background: "var(--bg)" }}>
-                {[
-                  { label: "Client",   w: 90  },
-                  { label: "Priority", w: 80  },
-                  { label: "Task"              },
-                  { label: "Start",    w: 96  },
-                  { label: "Due",      w: 96  },
-                  { label: "End",      w: 96  },
-                  ...(eodSubmitted ? [{ label: "Outcome", w: 100 }] : []),
-                ].map((h, i) => (
-                  <th key={i} style={{
-                    textAlign: "left", fontSize: 9, fontWeight: 500, textTransform: "uppercase",
-                    letterSpacing: "0.07em", color: "var(--faint)", padding: "5px 10px",
-                    borderBottom: "0.5px solid var(--border)", whiteSpace: "nowrap", width: h.w,
-                  }}>{h.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {displayTasks.filter(t => t.text?.trim()).map((t, i) => {
-                const ps = PRIORITY_STYLE[t.priority || "Medium"];
-                const os = OUTCOME_STYLE[t.outcome];
-                const overdue = isDuePast(t.dueDate, t.outcome);
-                return (
-                  <tr key={i} style={{
-                    borderTop: "0.5px solid var(--border)",
-                    background: t.outcome === "Blocked" ? "var(--red-bg)"
-                      : t.adhoc ? "#fffbeb" : "transparent",
-                  }}>
-                    <td style={{ padding: "7px 10px" }}>
-                      {t.client
-                        ? <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 20,
-                            background: "var(--blue-bg)", color: "var(--blue)",
-                            border: "0.5px solid var(--blue-bd)", fontWeight: 500 }}>{t.client}</span>
-                        : <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span>}
-                    </td>
-                    <td style={{ padding: "7px 10px" }}>
-                      <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 20, fontWeight: 500,
-                        color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>
-                        {t.priority || "Medium"}
-                      </span>
-                    </td>
-                    <td style={{ padding: "7px 10px", fontSize: 12, fontWeight: 500 }}>
-                      {t.text}
-                      {t.adhoc && <span style={{ fontSize: 8, marginLeft: 5, padding: "1px 4px", borderRadius: 8,
-                        background: "#fffbeb", color: "#854F0B", border: "0.5px solid #FAC775" }}>ad-hoc</span>}
-                    </td>
-                    <td style={{ padding: "7px 10px", fontSize: 10,
-                      fontFamily: "JetBrains Mono, monospace", color: "var(--muted)", whiteSpace: "nowrap" }}>
-                      {t.startDate || "—"}
-                    </td>
-                    <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
-                      {t.dueDate ? (
-                        <span style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace",
-                          color: overdue ? "var(--red)" : "var(--muted)",
-                          background: overdue ? "var(--red-bg)" : "transparent",
-                          padding: overdue ? "1px 4px" : 0, borderRadius: overdue ? 3 : 0,
-                          fontWeight: overdue ? 500 : 400 }}>
-                          {t.dueDate}{overdue ? " ⚠" : ""}
-                        </span>
-                      ) : <span style={{ fontSize: 10, color: "var(--faint)" }}>—</span>}
-                    </td>
-                    <td style={{ padding: "7px 10px", fontSize: 10,
-                      fontFamily: "JetBrains Mono, monospace",
-                      color: t.endDate ? "var(--green)" : "var(--faint)", whiteSpace: "nowrap" }}>
-                      {t.endDate || "—"}
-                    </td>
-                    {eodSubmitted && (
-                      <td style={{ padding: "7px 10px" }}>
-                        {os ? (
-                          <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-                            color: os.color, background: os.bg, border: `0.5px solid ${os.bd}`, whiteSpace: "nowrap" }}>
-                            {t.outcome}
-                          </span>
-                        ) : <span style={{ color: "var(--faint)", fontSize: 10 }}>—</span>}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* ── Footer summary ── */}
-      {hasToday && totalTasks > 0 && (
-        <div style={{ padding: "6px 14px", borderTop: "0.5px solid var(--border)",
-          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "var(--bg)" }}>
-          <span style={{ fontSize: 10, color: "var(--muted)" }}>{totalTasks} task{totalTasks !== 1 ? "s" : ""}</span>
-          {eodSubmitted && (
-            <>
-              {doneCount  > 0 && <span style={{ fontSize: 10, color: "var(--green)" }}>✓ {doneCount} done</span>}
-              {carryCount > 0 && <span style={{ fontSize: 10, color: "var(--amber)" }}>↪ {carryCount} carry</span>}
-              {blockedCount > 0 && <span style={{ fontSize: 10, color: "var(--red)" }}>⚑ {blockedCount} blocked</span>}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ── Blocker details ── */}
-      {eodSubmitted && displayTasks.some(t => t.outcome === "Blocked" && t.blockerDetail) && (
-        <div style={{ padding: "8px 14px 10px", borderTop: "0.5px solid var(--border)",
-          display: "flex", flexDirection: "column", gap: 5 }}>
-          {displayTasks.filter(t => t.outcome === "Blocked" && t.blockerDetail).map((t, i) => (
-            <div key={i} style={{ fontSize: 11, color: "var(--red)", display: "flex", gap: 6 }}>
-              <span style={{ flexShrink: 0 }}>⚑</span>
-              <span><strong style={{ fontWeight: 500 }}>{t.text}:</strong> {t.blockerDetail}</span>
-            </div>
-          ))}
-        </div>
-      )}
+    <div style={{ textAlign: "center" }}>
+      <div style={{ fontSize: 18, fontWeight: 500, color, lineHeight: 1 }}>{pct}%</div>
+      <div style={{ fontSize: 9, color: "var(--faint)", marginTop: 1 }}>{done}/{total}</div>
     </div>
   );
 }
@@ -294,7 +71,9 @@ export default function TeamOverview({ members, onViewProfile }) {
     <div className="main-content">
       <div style={{ textAlign: "center", padding: "60px 24px", color: "var(--muted)" }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>👥</div>
-        <div style={{ fontSize: 13, lineHeight: 1.8 }}>No team members yet.<br />Go to <strong>Allowed Users</strong> to invite your team.</div>
+        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+          No team members yet.<br />Go to <strong>Allowed Users</strong> to invite your team.
+        </div>
       </div>
     </div>
   );
@@ -308,9 +87,7 @@ export default function TeamOverview({ members, onViewProfile }) {
            (e?.sod?.tasks || []).some(t => t.blocker?.trim()) ||
            !!e?.blockers?.trim();
   });
-
-  const bwValues   = submittedToday.map(m =>
-    latest[m.name]?.sod?.bandwidth || latest[m.name]?.bandwidth).filter(Boolean);
+  const bwValues   = submittedToday.map(m => latest[m.name]?.sod?.bandwidth || latest[m.name]?.bandwidth).filter(Boolean);
   const avgBw      = bwValues.length ? Math.round(bwValues.reduce((a, b) => a + b, 0) / bwValues.length) : null;
   const avgBwS     = BW_STYLES[avgBw] || BW_STYLES[3];
   const avgBwLabel = avgBw ? BANDWIDTH[avgBw]?.label : "—";
@@ -331,14 +108,27 @@ export default function TeamOverview({ members, onViewProfile }) {
     setSlackSending(false);
   };
 
-  // Sort: submitted first, not submitted last
+  // Sort: blocked first, then submitted, then not submitted
   const sorted = [
-    ...members.filter(m => latest[m.name]?.date === TODAY),
+    ...members.filter(m => {
+      const e = latest[m.name];
+      return e?.date === TODAY && (
+        (e?.eod?.tasks || []).some(t => t.outcome === "Blocked") ||
+        (e?.sod?.tasks || []).some(t => t.blocker?.trim())
+      );
+    }),
+    ...members.filter(m => {
+      const e = latest[m.name];
+      if (e?.date !== TODAY) return false;
+      return !(e?.eod?.tasks || []).some(t => t.outcome === "Blocked") &&
+             !(e?.sod?.tasks || []).some(t => t.blocker?.trim());
+    }),
     ...members.filter(m => latest[m.name]?.date !== TODAY),
   ];
 
   return (
     <div className="main-content">
+      {/* Header */}
       <div className="flex justify-between items-start mb-16">
         <div>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>Team overview</div>
@@ -354,6 +144,7 @@ export default function TeamOverview({ members, onViewProfile }) {
         </div>
       </div>
 
+      {/* Stats */}
       <div className="stats-grid stats-grid-4 mb-16">
         <div className="stat-card"><div className="stat-value" style={{ color: "var(--green)" }}>{submittedToday.length}</div><div className="stat-label">Submitted today</div></div>
         <div className="stat-card"><div className="stat-value" style={{ color: "var(--faint)" }}>{notSubmitted.length}</div><div className="stat-label">Not submitted</div></div>
@@ -361,10 +152,147 @@ export default function TeamOverview({ members, onViewProfile }) {
         <div className="stat-card"><div className="stat-value" style={{ color: avgBwS.color, fontSize: 16, paddingTop: 2 }}>{avgBwLabel}</div><div className="stat-label">Avg bandwidth</div></div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {sorted.map(m => (
-          <MemberCard key={m.name} member={m} entry={latest[m.name]} onViewProfile={onViewProfile} />
-        ))}
+      {/* Roster table */}
+      <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        {/* Column headers */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "200px 90px 90px 1fr 180px 70px",
+          padding: "7px 14px",
+          background: "var(--bg)",
+          borderBottom: "0.5px solid var(--border)",
+          gap: 8,
+        }}>
+          {["Member", "Bandwidth", "Status", "Today's tasks", "Task progress", "Done"].map(h => (
+            <div key={h} style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase",
+              letterSpacing: "0.07em", color: "var(--faint)" }}>{h}</div>
+          ))}
+        </div>
+
+        {/* Rows */}
+        {sorted.map((m, idx) => {
+          const entry        = latest[m.name];
+          const hasToday     = entry?.date === TODAY;
+          const sod          = entry?.sod  || null;
+          const eod          = entry?.eod  || null;
+          const sodSubmitted = !!sod?.submittedAt;
+          const eodSubmitted = !!eod?.submittedAt;
+          const color        = avatarColor(m.name);
+          const bw           = sod?.bandwidth || entry?.bandwidth;
+          const bwS          = BW_STYLES[bw]  || BW_STYLES[3];
+          const bwL          = BANDWIDTH[bw]?.label;
+
+          const sodTasks = sod?.tasks || [];
+          const eodTasks = eod?.tasks || [];
+          const displayTasks = eodSubmitted
+            ? eodTasks.map((t, i) => ({ ...t, priority: t.priority || sodTasks[i]?.priority || "Medium" }))
+            : sodTasks;
+          const valid    = displayTasks.filter(t => t.text?.trim());
+          const total    = valid.length;
+          const done     = valid.filter(t => t.outcome === "Done").length;
+          const carry    = valid.filter(t => t.outcome === "Carry over").length;
+          const blocked  = valid.filter(t => t.outcome === "Blocked").length;
+
+          const hasBlocker = blocked > 0 || sodTasks.some(t => t.blocker?.trim());
+          const isLast     = idx === sorted.length - 1;
+
+          // Compact task list — client + task name, comma separated
+          const taskSummary = valid.slice(0, 3).map(t => t.client ? `${t.client}: ${t.text}` : t.text).join(" · ");
+          const overflow    = valid.length > 3 ? ` +${valid.length - 3} more` : "";
+
+          return (
+            <div key={m.name}
+              onClick={() => onViewProfile(m.name)}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "200px 90px 90px 1fr 180px 70px",
+                padding: "10px 14px",
+                gap: 8,
+                alignItems: "center",
+                cursor: "pointer",
+                borderBottom: isLast ? "none" : "0.5px solid var(--border)",
+                background: !hasToday ? "var(--amber-bg)"
+                  : hasBlocker ? "var(--red-bg)" + "18"
+                  : "transparent",
+              }}>
+
+              {/* Member */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                  background: color + "22", color, display: "flex", alignItems: "center",
+                  justifyContent: "center", fontSize: 10, fontWeight: 500 }}>
+                  {initials(m.name)}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500,
+                    color: !hasToday ? "var(--muted)" : "var(--text)",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {m.name}
+                  </div>
+                  <div style={{ fontSize: 9, color: "var(--faint)", marginTop: 1 }}>
+                    {sodSubmitted ? `SOD ${fmtTime(sod.submittedAt)}` : ""}
+                    {eodSubmitted ? ` · EOD ${fmtTime(eod.submittedAt)}` : sodSubmitted ? " · EOD pending" : ""}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bandwidth */}
+              <div>
+                {bwL && hasToday ? (
+                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
+                    color: bwS.color, background: bwS.bg, border: `0.5px solid ${bwS.bd}` }}>{bwL}</span>
+                ) : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
+              </div>
+
+              {/* Status */}
+              <div>
+                {!hasToday ? (
+                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
+                    background: "var(--amber-bg)", color: "var(--amber)", border: "0.5px solid var(--amber-bd)" }}>
+                    Not submitted
+                  </span>
+                ) : hasBlocker ? (
+                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
+                    background: "var(--red-bg)", color: "var(--red)", border: "0.5px solid var(--red-bd)" }}>
+                    ⚑ Blocked
+                  </span>
+                ) : eodSubmitted ? (
+                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
+                    background: "var(--green-bg)", color: "var(--green)", border: "0.5px solid var(--green-bd)" }}>
+                    EOD done
+                  </span>
+                ) : sodSubmitted ? (
+                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
+                    background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>
+                    SOD only
+                  </span>
+                ) : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
+              </div>
+
+              {/* Today's tasks — compact summary */}
+              <div style={{ fontSize: 11, color: "var(--muted)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {!hasToday
+                  ? <span style={{ fontStyle: "italic", color: "var(--faint)" }}>Last: {entry ? fmt(entry.date) : "never"}</span>
+                  : total > 0
+                    ? <>{taskSummary}<span style={{ color: "var(--faint)" }}>{overflow}</span></>
+                    : <span style={{ fontStyle: "italic", color: "var(--faint)" }}>No tasks</span>}
+              </div>
+
+              {/* Task progress bars */}
+              <div>
+                {hasToday && eodSubmitted && total > 0
+                  ? <TriBar done={done} carry={carry} blocked={blocked} total={total} />
+                  : hasToday && total > 0
+                    ? <div style={{ fontSize: 11, color: "var(--muted)" }}>{total} planned · EOD pending</div>
+                    : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
+              </div>
+
+              {/* Done % */}
+              <PctBadge done={done} total={total} eodSubmitted={eodSubmitted && hasToday} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
