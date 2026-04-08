@@ -1,0 +1,74 @@
+import { useState, useEffect, useCallback } from "react";
+import { db } from "../firebase";
+import {
+  collection, doc, setDoc, getDocs, deleteDoc,
+  query, orderBy,
+} from "firebase/firestore";
+import { TODAY } from "../utils/dates";
+
+// Firestore path: recurringTasks/{memberName}/tasks/{taskId}
+
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+// Returns true if a recurring task is scheduled for today
+export function isScheduledToday(task) {
+  const dow = new Date().getDay(); // 0=Sun
+  const iso = TODAY;
+  const dom = new Date().getDate();
+
+  if (task.schedule === "daily")   return true;
+  if (task.schedule === "weekdays") return dow >= 1 && dow <= 5;
+  if (task.schedule === "weekly" && Array.isArray(task.days)) {
+    return task.days.includes(dow);
+  }
+  if (task.schedule === "monthly") return dom === (task.dayOfMonth || 1);
+  return false;
+}
+
+export function scheduleLabel(task) {
+  if (task.schedule === "daily")    return "Daily";
+  if (task.schedule === "weekdays") return "Weekdays";
+  if (task.schedule === "monthly")  return `${task.dayOfMonth || 1}st of month`;
+  if (task.schedule === "weekly" && Array.isArray(task.days)) {
+    return task.days.map(d => DAYS[d]).join(", ");
+  }
+  return "—";
+}
+
+export function useRecurring(memberName) {
+  const [tasks,   setTasks]   = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!memberName) return;
+    setLoading(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, "recurringTasks", memberName, "tasks"), orderBy("createdAt", "asc"))
+      );
+      setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) { console.error("useRecurring load:", e); }
+    setLoading(false);
+  }, [memberName]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (task) => {
+    if (!memberName) return;
+    const id  = task.id || `rt_${Date.now()}`;
+    const data = { ...task, id, updatedAt: Date.now(),
+      createdAt: task.createdAt || Date.now() };
+    await setDoc(doc(db, "recurringTasks", memberName, "tasks", id), data);
+    await load();
+    return id;
+  };
+
+  const remove = async (id) => {
+    await deleteDoc(doc(db, "recurringTasks", memberName, "tasks", id));
+    setTasks(t => t.filter(x => x.id !== id));
+  };
+
+  const todayTasks = tasks.filter(t => t.active !== false && isScheduledToday(t));
+
+  return { tasks, loading, save, remove, reload: load, todayTasks };
+}
