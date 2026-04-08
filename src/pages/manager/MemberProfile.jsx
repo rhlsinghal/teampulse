@@ -259,17 +259,234 @@ function StatsCard({ label, sublabel, entries, allTasks }) {
   );
 }
 
-// ── Filterable task history table ─────────────────────────────────────────────
+// ── Days active counter ───────────────────────────────────────────────────────
+function daysActive(startDate) {
+  if (!startDate) return null;
+  const start = new Date(startDate);
+  const today = new Date(TODAY);
+  const diff  = Math.floor((today - start) / 86400000);
+  return diff >= 0 ? diff + 1 : null;
+}
+
+// ── Age bar ───────────────────────────────────────────────────────────────────
+function AgeBar({ startDate, dueDate, isDone }) {
+  const days = daysActive(startDate);
+  if (!days) return null;
+  let barColor = "var(--green)", pct = 30;
+  if (!isDone && dueDate) {
+    const total   = Math.max(1, Math.floor((new Date(dueDate) - new Date(startDate)) / 86400000));
+    const elapsed = Math.floor((new Date(TODAY) - new Date(startDate)) / 86400000);
+    pct = Math.min(100, Math.round((elapsed / total) * 100));
+    barColor = pct >= 100 ? "var(--red)" : pct >= 75 ? "var(--amber)" : "var(--green)";
+  } else if (isDone) { barColor = "var(--green)"; pct = 100; }
+  const textColor = !isDone && dueDate && new Date(dueDate) < new Date(TODAY)
+    ? "var(--red)" : !isDone && pct >= 75 ? "var(--amber)" : isDone ? "var(--green)" : "var(--muted)";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <span style={{ fontSize: 11, fontWeight: 500, color: textColor }}>
+        {days}d{!isDone ? " active" : " total"}
+      </span>
+      <div style={{ width: 52, height: 3, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, borderRadius: 2, background: barColor }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Active carry-overs section ────────────────────────────────────────────────
+function CarryOverSection({ entries }) {
+  const taskMap = {};
+
+  entries.forEach(e => {
+    const eodTasks = e.eod?.tasks || [];
+    const sodTasks = e.sod?.tasks || [];
+
+    eodTasks.forEach((t, i) => {
+      if (!t.text?.trim()) return;
+      const sodTask  = sodTasks[i] || {};
+      const isCarry  = t.outcome === "Carry over" || t.outcome === "Blocked" || sodTask.isCarryOver === true;
+      if (!isCarry) return;
+
+      const origin = sodTask.carryOverFrom || t.carryOverFrom || t.startDate || e.date;
+      const key    = `${t.client||""}|${t.text}|${origin}`;
+
+      if (!taskMap[key]) {
+        taskMap[key] = {
+          client: t.client || "", text: t.text || "",
+          priority: t.priority || sodTask.priority || "Medium",
+          startDate: t.startDate || sodTask.startDate || origin,
+          dueDate:   t.dueDate   || sodTask.dueDate   || "",
+          endDate:   t.endDate   || "",
+          outcome:   t.outcome,
+          blockerDetail: t.blockerDetail || "",
+          blockerOwner:  t.blockerOwner  || "",
+          notes:     t.notes || "",
+        };
+      }
+      // Upgrade to Done if found resolved in a later entry
+      if (taskMap[key] && t.outcome === "Done" && taskMap[key].outcome !== "Done") {
+        taskMap[key].outcome  = "Done";
+        taskMap[key].endDate  = t.endDate || e.date;
+      }
+    });
+  });
+
+  const all       = Object.values(taskMap);
+  const active    = all.filter(t => t.outcome !== "Done").sort((a,b) => {
+    if (a.outcome === "Blocked" && b.outcome !== "Blocked") return -1;
+    if (b.outcome === "Blocked" && a.outcome !== "Blocked") return 1;
+    return (a.startDate||"").localeCompare(b.startDate||"");
+  });
+  const completed = all.filter(t => t.outcome === "Done")
+    .sort((a,b) => (b.endDate||"").localeCompare(a.endDate||"")).slice(0,10);
+
+  if (all.length === 0) return null;
+
+  const blockedCount = active.filter(t => t.outcome === "Blocked").length;
+  const TH = ({ children, w }) => (
+    <th style={{ textAlign:"left", fontSize:9, fontWeight:500, textTransform:"uppercase",
+      letterSpacing:"0.07em", color:"var(--faint)", padding:"5px 12px",
+      borderBottom:"0.5px solid var(--border)", whiteSpace:"nowrap", width:w }}>{children}</th>
+  );
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {active.length > 0 && (
+        <div style={{ border:"0.5px solid var(--amber-bd)", borderRadius:12, overflow:"hidden", marginBottom:10 }}>
+          <div style={{ padding:"9px 14px", background:"var(--amber-bg)",
+            borderBottom:"0.5px solid var(--amber-bd)", display:"flex",
+            alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:12, fontWeight:500 }}>Active carry-overs</span>
+              <span style={{ fontSize:9, padding:"1px 7px", borderRadius:20, fontWeight:500,
+                background:"var(--amber-bg)", color:"var(--amber)", border:"0.5px solid var(--amber-bd)" }}>
+                {active.length} open{blockedCount > 0 ? ` · ${blockedCount} blocked` : ""}
+              </span>
+            </div>
+            <span style={{ fontSize:11, color:"var(--muted)" }}>Tasks spanning multiple days · active until marked Done</span>
+          </div>
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", minWidth:640 }}>
+              <thead>
+                <tr style={{ background:"var(--bg)" }}>
+                  <TH w={85}>Client</TH><TH w={75}>Priority</TH>
+                  <TH>Task</TH><TH w={92}>Started</TH>
+                  <TH w={92}>Due</TH><TH w={90}>Age</TH>
+                  <TH>Latest note</TH><TH w={95}>Status</TH>
+                </tr>
+              </thead>
+              <tbody>
+                {active.map((t, i) => {
+                  const isBlocked = t.outcome === "Blocked";
+                  const overdue   = t.dueDate && t.dueDate < TODAY;
+                  return (
+                    <tr key={i} style={{ borderTop:"0.5px solid var(--border)",
+                      background: isBlocked ? "var(--red-bg)" : "transparent" }}>
+                      <td style={{ padding:"8px 12px" }}><ClientPill client={t.client} /></td>
+                      <td style={{ padding:"8px 12px" }}><PriorityPill priority={t.priority} /></td>
+                      <td style={{ padding:"8px 12px" }}>
+                        <div style={{ fontSize:12, fontWeight:500 }}>{t.text}</div>
+                        {isBlocked && t.blockerDetail && (
+                          <div style={{ fontSize:10, color:"var(--red)", marginTop:2 }}>
+                            ⚑ {t.blockerDetail}
+                            {t.blockerOwner && <span style={{ color:"var(--muted)" }}> · {t.blockerOwner}</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding:"8px 12px", fontSize:11,
+                        fontFamily:"JetBrains Mono, monospace", color:"var(--muted)", whiteSpace:"nowrap" }}>
+                        {t.startDate || "—"}
+                      </td>
+                      <td style={{ padding:"8px 12px", whiteSpace:"nowrap" }}>
+                        {t.dueDate
+                          ? <span style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace",
+                              color: overdue ? "var(--red)" : "var(--muted)",
+                              fontWeight: overdue ? 500 : 400 }}>
+                              {t.dueDate}{overdue ? " !" : ""}
+                            </span>
+                          : <span style={{ fontSize:11, color:"var(--faint)" }}>—</span>}
+                      </td>
+                      <td style={{ padding:"8px 12px" }}>
+                        <AgeBar startDate={t.startDate} dueDate={t.dueDate} isDone={false} />
+                      </td>
+                      <td style={{ padding:"8px 12px", fontSize:11, color:"var(--muted)",
+                        maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {t.notes || <span style={{ color:"var(--faint)" }}>—</span>}
+                      </td>
+                      <td style={{ padding:"8px 12px" }}>
+                        <OutcomePill outcome={isBlocked ? "Blocked" : "Carry over"} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {completed.length > 0 && (
+        <div style={{ border:"0.5px solid var(--border)", borderRadius:12, overflow:"hidden", marginBottom:12 }}>
+          <div style={{ padding:"9px 14px", background:"var(--surface)",
+            borderBottom:"0.5px solid var(--border)", display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:12, fontWeight:500 }}>Resolved carry-overs</span>
+            <span style={{ fontSize:9, padding:"1px 7px", borderRadius:20, fontWeight:500,
+              background:"var(--green-bg)", color:"var(--green)", border:"0.5px solid var(--green-bd)" }}>
+              {completed.length} done
+            </span>
+          </div>
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", minWidth:560 }}>
+              <thead>
+                <tr style={{ background:"var(--bg)" }}>
+                  <TH w={85}>Client</TH><TH w={75}>Priority</TH>
+                  <TH>Task</TH><TH w={92}>Started</TH>
+                  <TH w={92}>Due</TH><TH w={90}>Days taken</TH>
+                  <TH w={100}>Completed</TH>
+                </tr>
+              </thead>
+              <tbody>
+                {completed.map((t, i) => (
+                  <tr key={i} style={{ borderTop:"0.5px solid var(--border)",
+                    background: i%2===1 ? "var(--bg)" : "transparent" }}>
+                    <td style={{ padding:"7px 12px" }}><ClientPill client={t.client} /></td>
+                    <td style={{ padding:"7px 12px" }}><PriorityPill priority={t.priority} /></td>
+                    <td style={{ padding:"7px 12px", fontSize:12, fontWeight:500 }}>{t.text}</td>
+                    <td style={{ padding:"7px 12px", fontSize:11,
+                      fontFamily:"JetBrains Mono, monospace", color:"var(--muted)" }}>{t.startDate||"—"}</td>
+                    <td style={{ padding:"7px 12px", fontSize:11,
+                      fontFamily:"JetBrains Mono, monospace", color:"var(--muted)" }}>{t.dueDate||"—"}</td>
+                    <td style={{ padding:"7px 12px" }}>
+                      <AgeBar startDate={t.startDate} dueDate={t.dueDate} isDone={true} />
+                    </td>
+                    <td style={{ padding:"7px 12px", fontSize:11,
+                      fontFamily:"JetBrains Mono, monospace", color:"var(--green)", fontWeight:500 }}>
+                      {t.endDate||"—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Filterable daily task history table ───────────────────────────────────────
 function TaskHistory({ entries }) {
   const [outcomeFilter, setOutcomeFilter] = useState("all");
   const [clientFilter,  setClientFilter]  = useState("all");
 
   const normed   = entries.map(normaliseEntry);
   const allTasks = normed.flatMap(e =>
-    (e.tasks || []).filter(t => t.text?.trim()).map(t => ({ ...t, date: e.date }))
+    (e.tasks || [])
+      .filter(t => t.text?.trim() && !t.isCarryOver)
+      .map(t => ({ ...t, date: e.date }))
   );
 
-  const clients = [...new Set(allTasks.map(t => t.client).filter(Boolean))].sort();
+  const clients  = [...new Set(allTasks.map(t => t.client).filter(Boolean))].sort();
   const outcomes = ["Done", "Carry over", "Blocked", "In Progress"];
 
   const filtered = allTasks.filter(t => {
@@ -278,10 +495,10 @@ function TaskHistory({ entries }) {
     return matchOutcome && matchClient;
   });
 
-  const FilterPill = ({ value, active, onClick, children }) => (
+  const FP = ({ active, onClick, children }) => (
     <button onClick={onClick} style={{
-      fontSize: 10, padding: "2px 9px", borderRadius: 20, fontWeight: 500, cursor: "pointer",
-      fontFamily: "inherit", border: "0.5px solid",
+      fontSize:10, padding:"2px 9px", borderRadius:20, fontWeight:500, cursor:"pointer",
+      fontFamily:"inherit", border:"0.5px solid",
       background: active ? "var(--accent)" : "var(--surface)",
       color: active ? "#fff" : "var(--muted)",
       borderColor: active ? "var(--accent)" : "var(--border)",
@@ -290,72 +507,77 @@ function TaskHistory({ entries }) {
 
   return (
     <div className="card mt-12">
-      <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
-        <span className="card-title">Task history</span>
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-          <FilterPill active={outcomeFilter === "all"} onClick={() => setOutcomeFilter("all")}>All</FilterPill>
+      <div className="card-header" style={{ flexWrap:"wrap", gap:8 }}>
+        <span className="card-title">Daily task history</span>
+        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+          <FP active={outcomeFilter==="all"} onClick={() => setOutcomeFilter("all")}>All</FP>
           {outcomes.map(o => (
-            <FilterPill key={o} active={outcomeFilter === o} onClick={() => setOutcomeFilter(o)}>{o}</FilterPill>
+            <FP key={o} active={outcomeFilter===o} onClick={() => setOutcomeFilter(o)}>{o}</FP>
           ))}
-          <div style={{ width: "0.5px", background: "var(--border)", margin: "0 2px" }} />
-          <FilterPill active={clientFilter === "all"} onClick={() => setClientFilter("all")}>All clients</FilterPill>
+          <div style={{ width:"0.5px", background:"var(--border)", margin:"0 2px" }} />
+          <FP active={clientFilter==="all"} onClick={() => setClientFilter("all")}>All clients</FP>
           {clients.map(c => (
-            <FilterPill key={c} active={clientFilter === c} onClick={() => setClientFilter(c)}>{c}</FilterPill>
+            <FP key={c} active={clientFilter===c} onClick={() => setClientFilter(c)}>{c}</FP>
           ))}
         </div>
       </div>
-      {filtered.length === 0 ? (
-        <div style={{ padding: "24px", textAlign: "center", color: "var(--faint)", fontSize: 12 }}>No tasks match this filter.</div>
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th style={{ width: 88 }}>Date</th>
-              <th style={{ width: 85 }}>Client</th>
-              <th style={{ width: 75 }}>Priority</th>
-              <th>Task</th>
-              <th style={{ width: 88 }}>Start</th>
-              <th style={{ width: 88 }}>Due</th>
-              <th style={{ width: 88 }}>End date</th>
-              <th style={{ width: 95 }}>Outcome</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.slice(0, 50).map((t, i) => {
-              const overdue = t.dueDate && t.dueDate < TODAY && (t.status || t.outcome) !== "Done";
-              return (
-                <tr key={i}>
-                  <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--muted)" }}>{fmt(t.date)}</td>
-                  <td><ClientPill client={t.client} /></td>
-                  <td><PriorityPill priority={t.priority} /></td>
-                  <td style={{ fontSize: 12 }}>{t.text}</td>
-                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.startDate || "—"}</td>
-                  <td>
-                    {t.dueDate ? (
-                      <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
-                        color: overdue ? "var(--red)" : "var(--muted)" }}>
-                        {t.dueDate}{overdue ? " !" : ""}
-                      </span>
-                    ) : <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span>}
-                  </td>
-                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
-                    color: t.endDate ? "var(--green)" : "var(--faint)" }}>{t.endDate || "—"}</td>
-                  <td><OutcomePill outcome={t.status || t.outcome} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      {filtered.length === 0
+        ? <div style={{ padding:"24px", textAlign:"center", color:"var(--faint)", fontSize:12 }}>No tasks match this filter.</div>
+        : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width:88 }}>Date</th>
+                <th style={{ width:85 }}>Client</th>
+                <th style={{ width:75 }}>Priority</th>
+                <th>Task</th>
+                <th style={{ width:88 }}>Start</th>
+                <th style={{ width:88 }}>Due</th>
+                <th style={{ width:88 }}>End date</th>
+                <th style={{ width:95 }}>Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0,50).map((t, i) => {
+                const overdue = t.dueDate && t.dueDate < TODAY && (t.status||t.outcome) !== "Done";
+                return (
+                  <tr key={i}>
+                    <td style={{ fontFamily:"JetBrains Mono, monospace", fontSize:11, color:"var(--muted)" }}>{fmt(t.date)}</td>
+                    <td><ClientPill client={t.client} /></td>
+                    <td><PriorityPill priority={t.priority} /></td>
+                    <td style={{ fontSize:12 }}>{t.text}</td>
+                    <td style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace", color:"var(--muted)" }}>{t.startDate||"—"}</td>
+                    <td>
+                      {t.dueDate
+                        ? <span style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace",
+                            color: overdue ? "var(--red)" : "var(--muted)" }}>
+                            {t.dueDate}{overdue ? " !" : ""}
+                          </span>
+                        : <span style={{ color:"var(--faint)", fontSize:11 }}>—</span>}
+                    </td>
+                    <td style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace",
+                      color: t.endDate ? "var(--green)" : "var(--faint)" }}>{t.endDate||"—"}</td>
+                    <td><OutcomePill outcome={t.status||t.outcome} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       {filtered.length > 50 && (
-        <div style={{ padding: "8px 14px", textAlign: "center", fontSize: 11, color: "var(--faint)",
-          borderTop: "0.5px solid var(--border)" }}>
+        <div style={{ padding:"8px 14px", textAlign:"center", fontSize:11, color:"var(--faint)",
+          borderTop:"0.5px solid var(--border)" }}>
           Showing 50 of {filtered.length} tasks
         </div>
       )}
+      <div style={{ padding:"7px 14px", fontSize:10, color:"var(--faint)",
+        borderTop:"0.5px solid var(--border)" }}>
+        Carry-over tasks are tracked separately above
+      </div>
     </div>
   );
 }
+
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function MemberProfile({ memberName, memberRecord, onBack }) {
@@ -539,7 +761,10 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
         </div>
       </div>
 
-      {/* ── Improvement 4: Filterable task history ── */}
+      {/* ── Carry-over section ── */}
+      <CarryOverSection entries={entries} />
+
+      {/* ── Improvement 4: Filterable daily task history ── */}
       <TaskHistory entries={entries} />
     </div>
   );

@@ -123,6 +123,7 @@ export default function TodayUpdate({ memberName }) {
             tasks: carryOvers.map(t => ({
               client: t.client || "", text: t.text || "", blocker: "",
               priority: t.priority || "Medium", startDate: t.startDate || "", dueDate: t.dueDate || "",
+              isCarryOver: true, carryOverFrom: yesterday.date,
             })),
           }));
         }
