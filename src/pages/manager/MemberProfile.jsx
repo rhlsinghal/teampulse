@@ -58,12 +58,12 @@ function MiniHeatmap({ year, month, entryDates, blockerDates, onNavigate }) {
         <button onClick={() => onNavigate(1)} style={{ fontSize: 13, color: "var(--faint)", cursor: "pointer",
           padding: "2px 8px", border: "0.5px solid var(--border)", borderRadius: 5, background: "var(--bg)" }}>›</button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1, marginBottom: 3 }}>
         {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
           <div key={d} style={{ textAlign: "center", fontSize: 9, color: "var(--faint)" }}>{d}</div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1 }}>
         {cells.map((d, i) => {
           if (!d) return <div key={i} />;
           const iso       = isoDate(year, month, d);
@@ -141,6 +141,7 @@ function TodaySection({ entry }) {
                 <th style={{ width: 85 }}>Client</th>
                 <th style={{ width: 75 }}>Priority</th>
                 <th>Task</th>
+                <th style={{ width: 88 }}>Start</th>
                 <th style={{ width: 88 }}>Due</th>
                 <th style={{ width: 88 }}>End date</th>
                 {eod?.submittedAt && <th style={{ width: 95 }}>Outcome</th>}
@@ -158,6 +159,7 @@ function TodaySection({ entry }) {
                       {t.adhoc && <span style={{ fontSize: 9, marginLeft: 5, padding: "1px 4px", borderRadius: 8,
                         background: "#fffbeb", color: "#854F0B", border: "0.5px solid #FAC775" }}>ad-hoc</span>}
                     </td>
+                    <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.startDate || "—"}</td>
                     <td>
                       {t.dueDate ? (
                         <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
@@ -312,6 +314,7 @@ function TaskHistory({ entries }) {
               <th style={{ width: 85 }}>Client</th>
               <th style={{ width: 75 }}>Priority</th>
               <th>Task</th>
+              <th style={{ width: 88 }}>Start</th>
               <th style={{ width: 88 }}>Due</th>
               <th style={{ width: 88 }}>End date</th>
               <th style={{ width: 95 }}>Outcome</th>
@@ -326,6 +329,7 @@ function TaskHistory({ entries }) {
                   <td><ClientPill client={t.client} /></td>
                   <td><PriorityPill priority={t.priority} /></td>
                   <td style={{ fontSize: 12 }}>{t.text}</td>
+                  <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>{t.startDate || "—"}</td>
                   <td>
                     {t.dueDate ? (
                       <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
@@ -508,19 +512,19 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
       {todayEntry && <TodaySection entry={todayEntry} />}
 
       {/* Heatmap + client distribution */}
-      <div className="form-grid-2 mb-12">
+      <div className="form-grid-2 mb-12" style={{ gap: 10 }}>
         <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-header"><span className="card-title">Activity</span></div>
-          <div className="card-body">
+          <div className="card-header" style={{ padding: "7px 12px" }}><span className="card-title">Activity</span></div>
+          <div className="card-body" style={{ padding: "10px 12px" }}>
             <MiniHeatmap year={calYear} month={calMonth}
               entryDates={entryDates} blockerDates={blockerDates} onNavigate={navigateCal} />
           </div>
         </div>
         <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-header"><span className="card-title">Work distribution</span><span className="card-meta">This year</span></div>
-          <div className="card-body">
+          <div className="card-header" style={{ padding: "7px 12px" }}><span className="card-title">Work distribution</span><span className="card-meta">This year</span></div>
+          <div className="card-body" style={{ padding: "10px 12px" }}>
             {Object.entries(clientCounts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c, n]) => (
-              <div key={c} style={{ marginBottom: 10 }}>
+              <div key={c} style={{ marginBottom: 7 }}>
                 <div className="flex justify-between mb-4">
                   <span className="text-sm font-medium">{c}</span>
                   <span className="text-xs text-muted">{n} tasks · {totalTasks ? Math.round(n/totalTasks*100) : 0}%</span>
