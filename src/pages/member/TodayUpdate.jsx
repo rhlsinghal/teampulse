@@ -3,6 +3,7 @@ import { Spinner, Toast, useToast } from "../../components/index.jsx";
 import { BANDWIDTH, BW_STYLES } from "../../utils/constants";
 import { fmt, TODAY } from "../../utils/dates";
 import { useHistory } from "../../hooks/useHistory";
+import { useRecurring } from "../../hooks/useRecurring";
 
 const emptySOD = () => ({
   bandwidth: 3,
@@ -91,6 +92,7 @@ function SODReadOnly({ sod }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function TodayUpdate({ memberName }) {
   const { entries, saving, saveSOD, saveEOD, getTodayEntry, getStreak } = useHistory(memberName);
+  const { todayTasks: recurringToday } = useRecurring(memberName);
   const { toast, show: showToast } = useToast();
 
   const todayEntry   = getTodayEntry();
@@ -130,6 +132,24 @@ export default function TodayUpdate({ memberName }) {
       }
     }
   }, [entries]);
+
+  // Inject recurring tasks into SOD when not yet submitted
+  useEffect(() => {
+    if (sodData || !recurringToday.length) return;
+    setSODForm(f => {
+      const existingTexts = new Set(f.tasks.map(t => t.text?.trim()).filter(Boolean));
+      const toAdd = recurringToday.filter(r => !existingTexts.has(r.text?.trim()));
+      if (!toAdd.length) return f;
+      const recurringTasks = toAdd.map(r => ({
+        client: r.client || "", text: r.text || "", blocker: "",
+        priority: r.priority || "Medium", startDate: "", dueDate: "",
+        isRecurring: true, recurringId: r.id,
+      }));
+      const realTasks = f.tasks.filter(t => t.text?.trim());
+      const empty     = f.tasks.filter(t => !t.text?.trim());
+      return { ...f, tasks: [...recurringTasks, ...realTasks, ...(realTasks.length ? [] : empty)] };
+    });
+  }, [recurringToday, sodData]);
 
   // Pre-fill EOD from SOD — carry startDate/dueDate from SOD tasks
   useEffect(() => {
@@ -268,10 +288,37 @@ export default function TodayUpdate({ memberName }) {
                     </tr>
                   </thead>
                   <tbody>
+                    {/* Recurring separator */}
+                    {sodForm.tasks.some(t => t.isRecurring) && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: "5px 10px", background: "#EEEDFE",
+                          borderBottom: "0.5px solid #AFA9EC" }}>
+                          <span style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase",
+                            letterSpacing: "0.07em", color: "#534AB7" }}>
+                            ↻ Recurring — auto added for today
+                          </span>
+                        </td>
+                      </tr>
+                    )}
                     {sodForm.tasks.map((t, i) => {
                       const ps = PRIORITY_STYLE[t.priority || "Medium"];
+                      const isFirstProject = !t.isRecurring &&
+                        sodForm.tasks.some(x => x.isRecurring) &&
+                        sodForm.tasks.findIndex(x => !x.isRecurring) === i;
                       return (
-                        <tr key={i}>
+                        <>
+                          {isFirstProject && (
+                            <tr>
+                              <td colSpan={7} style={{ padding: "5px 10px",
+                                background: "var(--surface)", borderBottom: "0.5px solid var(--border)" }}>
+                                <span style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase",
+                                  letterSpacing: "0.07em", color: "var(--faint)" }}>
+                                  Project tasks
+                                </span>
+                              </td>
+                            </tr>
+                          )}
+                          <tr key={i} style={{ background: t.isRecurring ? "#EEEDFE20" : "transparent" }}>
                           <td>
                             <input className="task-cell-input" placeholder="Client..." value={t.client}
                               onChange={e => updateSODTask(i, "client", e.target.value)} />
@@ -304,7 +351,8 @@ export default function TodayUpdate({ memberName }) {
                               style={{ fontSize: 11, ...(t.blocker?.trim() ? { color: "var(--red)", background: "var(--red-bg)", borderColor: "var(--red-bd)" } : { color: "var(--faint)", fontStyle: "italic" }) }} />
                           </td>
                           <td><div className="task-del" onClick={() => removeSODTask(i)}>×</div></td>
-                        </tr>
+                          </tr>
+                        </>
                       );
                     })}
                   </tbody>
