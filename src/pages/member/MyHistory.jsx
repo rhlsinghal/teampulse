@@ -416,25 +416,39 @@ function LegacyDayDetail({ entry }) {
 // ── Monthly summary builder ───────────────────────────────────────────────────
 function buildSummary(entries, year, month) {
   const monthKey     = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const monthEntries = entries.filter(e => e.date?.startsWith(monthKey)).map(normaliseEntry);
+  const rawEntries   = entries.filter(e => e.date?.startsWith(monthKey));
+  const monthEntries = rawEntries.map(normaliseEntry);
   const tasksByClient = {}, tasksByStatus = { "Done": 0, "In Progress": 0, "Blocked": 0, "Pending": 0 };
   let totalTasks = 0, totalBlockers = 0;
   const bwValues = [];
-  monthEntries.forEach(e => {
+  const recurringMap = {};
+
+  monthEntries.forEach((e, ei) => {
     if (e.blockers?.trim()) totalBlockers++;
     if (e.bandwidth) bwValues.push(e.bandwidth);
-    (e.tasks || []).forEach(t => {
+    const rawSodTasks = rawEntries[ei]?.sod?.tasks || [];
+    (e.tasks || []).forEach((t, ti) => {
       if (!t.text?.trim()) return;
+      const rawSod      = rawSodTasks[ti] || {};
+      const isRecurring = rawSod.isRecurring === true || t.isRecurring === true;
+      if (isRecurring) {
+        const key = rawSod.recurringId || `${t.client || ""}|${t.text}`;
+        if (!recurringMap[key]) {
+          recurringMap[key] = { text: t.text, client: t.client || "", scheduledDays: 0, doneDays: 0 };
+        }
+        recurringMap[key].scheduledDays++;
+        if (t.status === "Done" || t.outcome === "Done") recurringMap[key].doneDays++;
+        return; // exclude from project totals
+      }
       totalTasks++;
-      const c = t.client || "Internal";
-      tasksByClient[c] = (tasksByClient[c] || 0) + 1;
+      const cl = t.client || "Internal";
+      tasksByClient[cl] = (tasksByClient[cl] || 0) + 1;
       if (tasksByStatus[t.status] !== undefined) tasksByStatus[t.status]++;
     });
   });
   const avgBw = bwValues.length ? Math.round(bwValues.reduce((a, b) => a + b, 0) / bwValues.length) : 3;
-  // Keep raw (un-normalised) entries for carry-over detection
-  const rawEntries = entries.filter(e => e.date?.startsWith(monthKey));
-  return { daysSubmitted: monthEntries.length, totalTasks, totalBlockers, tasksByClient, tasksByStatus, avgBw, entries: monthEntries, rawEntries };
+  const recurringTasks = Object.values(recurringMap);
+  return { daysSubmitted: monthEntries.length, totalTasks, totalBlockers, tasksByClient, tasksByStatus, avgBw, entries: monthEntries, rawEntries, recurringTasks };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -510,21 +524,75 @@ export default function MyHistory({ memberName }) {
             <EmptyState icon="📊" message={`No updates found for ${MONTHS[sumMonth]} ${sumYear}.`} />
           ) : (
             <>
+              {/* Stats — project tasks only, recurring excluded */}
               <div className="stats-grid stats-grid-4 mb-12">
                 <div className="stat-card"><div className="stat-value" style={{ color: "var(--accent)" }}>{summary.daysSubmitted}</div><div className="stat-label">Days submitted</div></div>
                 <div className="stat-card"><div className="stat-value" style={{ color: "var(--green)" }}>{summary.tasksByStatus["Done"] || 0}</div><div className="stat-label">Tasks done</div></div>
                 <div className="stat-card"><div className="stat-value" style={{ color: "var(--red)" }}>{summary.totalBlockers}</div><div className="stat-label">Blockers raised</div></div>
                 <div className="stat-card"><div className="stat-value" style={{ color: BW_STYLES[summary.avgBw]?.color, fontSize: 16, paddingTop: 2 }}>{BANDWIDTH[summary.avgBw]?.label || "—"}</div><div className="stat-label">Avg bandwidth</div></div>
               </div>
+
+              {/* Project completion bar */}
               <div style={{ marginBottom: 12, padding: "10px 14px", background: "var(--surface)", borderRadius: 8, border: "0.5px solid var(--border)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: "var(--muted)" }}>Overall completion</span>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{summary.tasksByStatus["Done"] || 0} / {summary.totalTasks} tasks</span>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>Project task completion</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>
+                    {summary.tasksByStatus["Done"] || 0} / {summary.totalTasks} tasks
+                    {summary.totalTasks > 0 && ` (${Math.round((summary.tasksByStatus["Done"] || 0) / summary.totalTasks * 100)}%)`}
+                  </span>
                 </div>
                 <div style={{ height: 5, borderRadius: 3, background: "var(--border)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", borderRadius: 3, width: `${summary.totalTasks ? Math.round((summary.tasksByStatus["Done"] || 0) / summary.totalTasks * 100) : 0}%`, background: "var(--accent)", transition: "width 0.3s" }} />
+                  <div style={{ height: "100%", borderRadius: 3, transition: "width 0.3s",
+                    width: `${summary.totalTasks ? Math.round((summary.tasksByStatus["Done"] || 0) / summary.totalTasks * 100) : 0}%`,
+                    background: "var(--accent)" }} />
                 </div>
+                {summary.recurringTasks?.length > 0 && (
+                  <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 5 }}>
+                    Recurring tasks tracked separately below · excluded from this count
+                  </div>
+                )}
               </div>
+
+              {/* Recurring compliance card */}
+              {summary.recurringTasks?.length > 0 && (
+                <div style={{ border: "0.5px solid var(--blue-bd)", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
+                  <div style={{ padding: "9px 14px", background: "var(--blue-bg)", borderBottom: "0.5px solid var(--blue-bd)",
+                    display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 500 }}>Recurring task compliance</span>
+                      <span style={{ fontSize: 9, padding: "1px 7px", borderRadius: 20, fontWeight: 500,
+                        background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>
+                        {summary.recurringTasks.length} task{summary.recurringTasks.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>Tracked separately · excluded from project stats</span>
+                  </div>
+                  <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                    {summary.recurringTasks.map((r, i) => {
+                      const pct = r.scheduledDays ? Math.round(r.doneDays / r.scheduledDays * 100) : 0;
+                      const col = pct === 100 ? "var(--green)" : pct >= 75 ? "var(--accent)" : pct >= 50 ? "var(--amber)" : "var(--red)";
+                      return (
+                        <div key={i}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                            {r.client && (
+                              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
+                                background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>
+                                {r.client}
+                              </span>
+                            )}
+                            <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{r.text}</span>
+                            <span style={{ fontSize: 12, fontWeight: 500, color: col }}>{r.doneDays} / {r.scheduledDays} days</span>
+                            <span style={{ fontSize: 11, fontWeight: 500, color: col, minWidth: 36, textAlign: "right" }}>{pct}%</span>
+                          </div>
+                          <div style={{ height: 5, borderRadius: 3, background: "var(--border)", overflow: "hidden" }}>
+                            <div style={{ height: "100%", borderRadius: 3, width: `${pct}%`, background: col, transition: "width 0.3s" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="form-grid-2 mb-12">
                 <div className="card" style={{ marginBottom: 0 }}>
                   <div className="card-header"><span className="card-title">Tasks by client</span></div>
@@ -665,7 +733,7 @@ export default function MyHistory({ memberName }) {
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Task breakdown</span>
-                  <span className="card-meta">{summary.daysSubmitted} days · {summary.totalTasks} tasks</span>
+                  <span className="card-meta">{summary.daysSubmitted} days · {summary.totalTasks} project tasks</span>
                 </div>
                 <table className="data-table">
                   <thead>
@@ -687,11 +755,17 @@ export default function MyHistory({ memberName }) {
                         const ps = PRIORITY_STYLE[t.priority||"Medium"];
                         const overdue = t.dueDate && t.dueDate < TODAY && (t.status||t.outcome) !== "Done";
                         return (
-                          <tr key={`${ei}-${ti}`}>
+                          <tr key={`${ei}-${ti}`} style={{ background: (summary.rawEntries?.[ei]?.sod?.tasks?.[ti]?.isRecurring) ? "#EEEDFE15" : "transparent" }}>
                             <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{fmt(e.date)}</td>
                             <td>{t.client ? <span className="badge badge-blue" style={{ fontSize:11 }}>{t.client}</span> : <span style={{ color:"var(--faint)" }}>—</span>}</td>
                             <td><span style={{ fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:500,color:ps.color,background:ps.bg,border:`0.5px solid ${ps.bd}` }}>{t.priority||"Medium"}</span></td>
-                            <td className="text-sm">{t.text}</td>
+                            <td className="text-sm">
+                              {summary.rawEntries?.[ei]?.sod?.tasks?.[ti]?.isRecurring && (
+                                <span style={{ fontSize:9, marginRight:5, padding:"1px 5px", borderRadius:10,
+                                  background:"#EEEDFE", color:"#534AB7", border:"0.5px solid #AFA9EC", fontWeight:500 }}>↻</span>
+                              )}
+                              {t.text}
+                            </td>
                             <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{t.startDate||"—"}</td>
                             <td>
                               {t.dueDate
