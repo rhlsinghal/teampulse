@@ -8,17 +8,40 @@ export function normaliseEntry(entry) {
   const eodTasks = entry.eod?.tasks || [];
   const tasks = eodTasks.length
     ? eodTasks.map((t, i) => ({
-        client:   t.client   || "",
-        text:     t.text     || "",
-        priority: sodTasks[i]?.priority || t.priority || "Medium",
+        client:        t.client        || "",
+        text:          t.text          || "",
+        priority:      sodTasks[i]?.priority || t.priority || "Medium",
+        startDate:     t.startDate     || sodTasks[i]?.startDate || "",
+        dueDate:       t.dueDate       || sodTasks[i]?.dueDate   || "",
+        endDate:       t.endDate       || "",
+        isCarryOver:   sodTasks[i]?.isCarryOver   || false,
+        carryOverFrom: sodTasks[i]?.carryOverFrom || "",
+        adhoc:         t.adhoc         || false,
+        outcome:       t.outcome,
+        notes:         t.notes         || "",
+        blockerDetail: t.blockerDetail || "",
+        blockerOwner:  t.blockerOwner  || "",
         status: t.outcome === "Done"       ? "Done"
               : t.outcome === "Blocked"    ? "Blocked"
-              : t.outcome === "Carry over" ? "In Progress"
+              : t.outcome === "Carry over" ? "Carry over"
               : "In Progress",
-        outcome: t.outcome,
-        notes:   t.notes || "",
       }))
-    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", priority: t.priority || "Medium", status: "In Progress" }));
+    : sodTasks.map(t => ({
+        client:        t.client        || "",
+        text:          t.text          || "",
+        priority:      t.priority      || "Medium",
+        startDate:     t.startDate     || "",
+        dueDate:       t.dueDate       || "",
+        endDate:       "",
+        isCarryOver:   t.isCarryOver   || false,
+        carryOverFrom: t.carryOverFrom || "",
+        adhoc:         false,
+        outcome:       null,
+        notes:         "",
+        blockerDetail: "",
+        blockerOwner:  "",
+        status:        "In Progress",
+      }));
   const blockerTasks = sodTasks.filter(t => t.blocker?.trim() && t.blocker !== "N/A");
   const blockers     = blockerTasks.map(t => `${t.text}: ${t.blocker}`).join("; ");
   return {

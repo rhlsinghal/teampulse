@@ -432,7 +432,9 @@ function buildSummary(entries, year, month) {
     });
   });
   const avgBw = bwValues.length ? Math.round(bwValues.reduce((a, b) => a + b, 0) / bwValues.length) : 3;
-  return { daysSubmitted: monthEntries.length, totalTasks, totalBlockers, tasksByClient, tasksByStatus, avgBw, entries: monthEntries };
+  // Keep raw (un-normalised) entries for carry-over detection
+  const rawEntries = entries.filter(e => e.date?.startsWith(monthKey));
+  return { daysSubmitted: monthEntries.length, totalTasks, totalBlockers, tasksByClient, tasksByStatus, avgBw, entries: monthEntries, rawEntries };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -549,7 +551,7 @@ export default function MyHistory({ memberName }) {
               </div>
               {/* ── Carry-over section ── */}
               {(() => {
-                const allCO  = buildCarryOvers(summary.entries);
+                const allCO  = buildCarryOvers(summary.rawEntries || []);
                 if (allCO.length === 0) return null;
                 const active = allCO.filter(t => t.outcome !== "Done").sort((a,b) => {
                   if (a.outcome === "Blocked" && b.outcome !== "Blocked") return -1;
