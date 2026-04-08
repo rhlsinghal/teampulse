@@ -111,7 +111,7 @@ export function useHistory(memberName) {
     let streak = 0;
     const d = new Date();
     while (true) {
-      const iso = d.toISOString().slice(0, 10);
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
       if (entries.find(e => e.date === iso)) { streak++; d.setDate(d.getDate() - 1); }
       else break;
     }

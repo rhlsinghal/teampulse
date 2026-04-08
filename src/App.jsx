@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "./hooks/useAuth";
+import { getToday } from "./utils/dates";
 import { Login, AccessDenied, TopNav, MemberSidebar, ManagerTabs } from "./components/index.jsx";
 import { useHistory } from "./hooks/useHistory";
 import { avatarColor, initials } from "./utils/constants";
@@ -260,6 +261,18 @@ export default function App() {
     if (!isManager) return;
     loadMembers();
   }, [isManager]);
+
+  // Auto-reload when the calendar date changes while the tab is open (e.g. left open overnight)
+  const loadDateRef = useRef(getToday());
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && getToday() !== loadDateRef.current) {
+        window.location.reload();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
 
   if (authLoading) return <LoadingScreen />;
   if (!user)       return <Login onLogin={login} loading={loginLoading} error={loginError} />;

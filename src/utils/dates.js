@@ -1,4 +1,9 @@
-export const TODAY = new Date().toISOString().slice(0, 10);
+// Returns today's date as YYYY-MM-DD in local time (not UTC)
+export function getToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+export const TODAY = getToday();
 
 export const fmt = (iso) =>
   new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
@@ -13,7 +18,7 @@ export const fmtMonthYear = (iso) =>
 export const fmtShortMonth = (iso) =>
   new Date(iso + "-01T00:00:00").toLocaleDateString("en-US", { month: "short" });
 
-export const toYYYYMM = (date) => date.toISOString().slice(0, 7);
+export const toYYYYMM = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 
 export const getDaysInMonth = (year, month) =>
   new Date(year, month + 1, 0).getDate();

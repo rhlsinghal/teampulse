@@ -16,7 +16,7 @@ export default function Blockers({ members }) {
     // Load last 60 days to find blockers
     const start = new Date();
     start.setDate(start.getDate() - 60);
-    const startStr = start.toISOString().slice(0, 10);
+    const startStr = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}-${String(start.getDate()).padStart(2,"0")}`;
 
     Promise.all(members.map(m =>
       loadEntriesInRange(m.name, startStr, TODAY).then(entries =>

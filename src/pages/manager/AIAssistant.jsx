@@ -124,7 +124,7 @@ export default function AIAssistant({ members }) {
   const buildContext = async () => {
     const start = new Date();
     start.setDate(start.getDate() - 30);
-    const startStr = start.toISOString().slice(0, 10);
+    const startStr = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}-${String(start.getDate()).padStart(2,"0")}`;
     const allData = await Promise.all(
       members.map(async m => {
         const entries = await loadEntriesInRange(m.name, startStr, TODAY);
