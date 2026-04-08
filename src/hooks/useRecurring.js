@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { db } from "../firebase";
 import {
   collection, doc, setDoc, getDocs, deleteDoc,
-  query, orderBy,
 } from "firebase/firestore";
 import { TODAY } from "../utils/dates";
 
@@ -44,9 +43,12 @@ export function useRecurring(memberName) {
     setLoading(true);
     try {
       const snap = await getDocs(
-        query(collection(db, "recurringTasks", memberName, "tasks"), orderBy("createdAt", "asc"))
+        collection(db, "recurringTasks", memberName, "tasks")
       );
-      setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const sorted = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      setTasks(sorted);
     } catch (e) { console.error("useRecurring load:", e); }
     setLoading(false);
   }, [memberName]);
@@ -55,11 +57,14 @@ export function useRecurring(memberName) {
 
   const save = async (task) => {
     if (!memberName) return;
-    const id  = task.id || `rt_${Date.now()}`;
-    const data = { ...task, id, updatedAt: Date.now(),
-      createdAt: task.createdAt || Date.now() };
-    await setDoc(doc(db, "recurringTasks", memberName, "tasks", id), data);
-    await load();
+    const id   = task.id || `rt_${Date.now()}`;
+    const data = { ...task, id, updatedAt: Date.now(), createdAt: task.createdAt || Date.now() };
+    try {
+      await setDoc(doc(db, "recurringTasks", memberName, "tasks", id), data);
+      await load();
+    } catch (e) {
+      console.error("useRecurring save:", e);
+    }
     return id;
   };
 

@@ -87,9 +87,14 @@ function TaskModal({ initial, onSave, onClose }) {
   const handleSave = async () => {
     if (!form.text.trim()) return;
     setSaving(true);
-    await onSave(form);
-    setSaving(false);
-    onClose();
+    try {
+      await onSave(form);
+      onClose();
+    } catch (e) {
+      console.error("RecurringTasks save error:", e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
