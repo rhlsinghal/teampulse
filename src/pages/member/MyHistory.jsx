@@ -564,7 +564,9 @@ export default function MyHistory({ memberName }) {
                     letterSpacing:"0.07em",color:"var(--faint)",padding:"5px 12px",
                     borderBottom:"0.5px solid var(--border)",whiteSpace:"nowrap",width:w }}>{children}</th>
                 );
-                const cPill = c => c ? <span style={{ fontSize:10,padding:"2px 7px",borderRadius:20,fontWeight:500,background:"var(--blue-bg)",color:"var(--blue)",border:"0.5px solid var(--blue-bd)" }}>{c}</span> : <span style={{ fontSize:11,color:"var(--faint)" }}>—</span>;
+                const cPill = c => c
+                  ? <span style={{ fontSize:10,padding:"2px 7px",borderRadius:20,fontWeight:500,background:"var(--blue-bg)",color:"var(--blue)",border:"0.5px solid var(--blue-bd)" }}>{c}</span>
+                  : <span style={{ fontSize:11,color:"var(--faint)" }}>—</span>;
                 const pPill = p => { const s=PRIORITY_STYLE[p||"Medium"]; return <span style={{ fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:500,color:s.color,background:s.bg,border:`0.5px solid ${s.bd}` }}>{p||"Medium"}</span>; };
                 const oPill = o => { const s=OUTCOME_STYLE[o]; return s ? <span style={{ fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:500,color:s.color,background:s.bg,border:`0.5px solid ${s.bd}` }}>{o}</span> : <span style={{ fontSize:11,color:"var(--faint)" }}>{o||"—"}</span>; };
                 return (
@@ -598,15 +600,21 @@ export default function MyHistory({ memberName }) {
                                     <td style={{ padding:"8px 12px" }}>
                                       <div style={{ fontSize:12,fontWeight:500 }}>{t.text}</div>
                                       {isBlocked && t.blockerDetail && (
-                                        <div style={{ fontSize:10,color:"var(--red)",marginTop:2 }}>⚑ {t.blockerDetail}{t.blockerOwner && <span style={{ color:"var(--muted)" }}> · {t.blockerOwner}</span>}</div>
+                                        <div style={{ fontSize:10,color:"var(--red)",marginTop:2 }}>
+                                          ⚑ {t.blockerDetail}{t.blockerOwner && <span style={{ color:"var(--muted)" }}> · {t.blockerOwner}</span>}
+                                        </div>
                                       )}
                                     </td>
                                     <td style={{ padding:"8px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--muted)",whiteSpace:"nowrap" }}>{t.startDate||"—"}</td>
                                     <td style={{ padding:"8px 12px",whiteSpace:"nowrap" }}>
-                                      {t.dueDate ? <span style={{ fontSize:11,fontFamily:"JetBrains Mono, monospace",color:overdue?"var(--red)":"var(--muted)",fontWeight:overdue?500:400 }}>{t.dueDate}{overdue?" !":""}</span> : <span style={{ fontSize:11,color:"var(--faint)" }}>—</span>}
+                                      {t.dueDate
+                                        ? <span style={{ fontSize:11,fontFamily:"JetBrains Mono, monospace",color:overdue?"var(--red)":"var(--muted)",fontWeight:overdue?500:400 }}>{t.dueDate}{overdue?" !":""}</span>
+                                        : <span style={{ fontSize:11,color:"var(--faint)" }}>—</span>}
                                     </td>
                                     <td style={{ padding:"8px 12px" }}><AgeBar startDate={t.startDate} dueDate={t.dueDate} isDone={false} /></td>
-                                    <td style={{ padding:"8px 12px",fontSize:11,color:"var(--muted)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{t.notes||<span style={{ color:"var(--faint)" }}>—</span>}</td>
+                                    <td style={{ padding:"8px 12px",fontSize:11,color:"var(--muted)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
+                                      {t.notes || <span style={{ color:"var(--faint)" }}>—</span>}
+                                    </td>
                                     <td style={{ padding:"8px 12px" }}>{oPill(isBlocked?"Blocked":"Carry over")}</td>
                                   </tr>
                                 );
@@ -620,7 +628,9 @@ export default function MyHistory({ memberName }) {
                       <div style={{ border:"0.5px solid var(--border)",borderRadius:12,overflow:"hidden",marginBottom:10 }}>
                         <div style={{ padding:"9px 14px",background:"var(--surface)",borderBottom:"0.5px solid var(--border)",display:"flex",alignItems:"center",gap:8 }}>
                           <span style={{ fontSize:12,fontWeight:500 }}>Resolved carry-overs</span>
-                          <span style={{ fontSize:9,padding:"1px 7px",borderRadius:20,fontWeight:500,background:"var(--green-bg)",color:"var(--green)",border:"0.5px solid var(--green-bd)" }}>{completed.length} done</span>
+                          <span style={{ fontSize:9,padding:"1px 7px",borderRadius:20,fontWeight:500,background:"var(--green-bg)",color:"var(--green)",border:"0.5px solid var(--green-bd)" }}>
+                            {completed.length} done
+                          </span>
                         </div>
                         <div style={{ overflowX:"auto" }}>
                           <table style={{ width:"100%",borderCollapse:"collapse",minWidth:500 }}>
@@ -658,10 +668,14 @@ export default function MyHistory({ memberName }) {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ width:88 }}>Date</th><th style={{ width:85 }}>Client</th>
-                      <th style={{ width:75 }}>Priority</th><th>Task</th>
-                      <th style={{ width:88 }}>Start</th><th style={{ width:88 }}>Due</th>
-                      <th style={{ width:88 }}>End</th><th style={{ width:95 }}>Status</th>
+                      <th style={{ width:88 }}>Date</th>
+                      <th style={{ width:85 }}>Client</th>
+                      <th style={{ width:75 }}>Priority</th>
+                      <th>Task</th>
+                      <th style={{ width:88 }}>Start</th>
+                      <th style={{ width:88 }}>Due</th>
+                      <th style={{ width:88 }}>End</th>
+                      <th style={{ width:95 }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -677,7 +691,11 @@ export default function MyHistory({ memberName }) {
                             <td><span style={{ fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:500,color:ps.color,background:ps.bg,border:`0.5px solid ${ps.bd}` }}>{t.priority||"Medium"}</span></td>
                             <td className="text-sm">{t.text}</td>
                             <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{t.startDate||"—"}</td>
-                            <td>{t.dueDate ? <span style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:overdue?"var(--red)":"var(--muted)",fontWeight:overdue?500:400 }}>{t.dueDate}{overdue?" !":""}</span> : <span style={{ color:"var(--faint)",fontSize:11 }}>—</span>}</td>
+                            <td>
+                              {t.dueDate
+                                ? <span style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:overdue?"var(--red)":"var(--muted)",fontWeight:overdue?500:400 }}>{t.dueDate}{overdue?" !":""}</span>
+                                : <span style={{ color:"var(--faint)",fontSize:11 }}>—</span>}
+                            </td>
                             <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:t.endDate?"var(--green)":"var(--faint)" }}>{t.endDate||"—"}</td>
                             <td>{os ? <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:os.bg,color:os.color,border:`0.5px solid ${os.bd}` }}>{t.status||t.outcome}</span> : <span style={{ fontSize:11,color:"var(--faint)" }}>{t.status||"—"}</span>}</td>
                           </tr>
