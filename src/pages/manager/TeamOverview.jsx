@@ -157,7 +157,7 @@ export default function TeamOverview({ members, onViewProfile }) {
         {/* Column headers */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "200px 90px 90px 1fr 180px 70px",
+          gridTemplateColumns: "180px 85px 95px 1fr 190px 64px",
           padding: "7px 14px",
           background: "var(--bg)",
           borderBottom: "0.5px solid var(--border)",
@@ -197,15 +197,12 @@ export default function TeamOverview({ members, onViewProfile }) {
           const isLast     = idx === sorted.length - 1;
 
           // Compact task list — client + task name, comma separated
-          const taskSummary = valid.slice(0, 3).map(t => t.client ? `${t.client}: ${t.text}` : t.text).join(" · ");
-          const overflow    = valid.length > 3 ? ` +${valid.length - 3} more` : "";
-
           return (
             <div key={m.name}
               onClick={() => onViewProfile(m.name)}
               style={{
                 display: "grid",
-                gridTemplateColumns: "200px 90px 90px 1fr 180px 70px",
+                gridTemplateColumns: "180px 85px 95px 1fr 190px 64px",
                 padding: "10px 14px",
                 gap: 8,
                 alignItems: "center",
@@ -269,14 +266,30 @@ export default function TeamOverview({ members, onViewProfile }) {
                 ) : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
               </div>
 
-              {/* Today's tasks — compact summary */}
-              <div style={{ fontSize: 11, color: "var(--muted)",
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {!hasToday
-                  ? <span style={{ fontStyle: "italic", color: "var(--faint)" }}>Last: {entry ? fmt(entry.date) : "never"}</span>
-                  : total > 0
-                    ? <>{taskSummary}<span style={{ color: "var(--faint)" }}>{overflow}</span></>
-                    : <span style={{ fontStyle: "italic", color: "var(--faint)" }}>No tasks</span>}
+              {/* Today's tasks — stacked, up to 3 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {!hasToday ? (
+                  <span style={{ fontSize: 11, fontStyle: "italic", color: "var(--faint)" }}>Last: {entry ? fmt(entry.date) : "never"}</span>
+                ) : total > 0 ? (
+                  <>
+                    {valid.slice(0, 3).map((t, ti) => (
+                      <div key={ti} style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                        {t.client && (
+                          <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 10, fontWeight: 500,
+                            background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)",
+                            flexShrink: 0, whiteSpace: "nowrap" }}>{t.client}</span>
+                        )}
+                        <span style={{ fontSize: 11, color: "var(--muted)",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
+                      </div>
+                    ))}
+                    {valid.length > 3 && (
+                      <span style={{ fontSize: 10, color: "var(--faint)" }}>+{valid.length - 3} more</span>
+                    )}
+                  </>
+                ) : (
+                  <span style={{ fontSize: 11, fontStyle: "italic", color: "var(--faint)" }}>No tasks</span>
+                )}
               </div>
 
               {/* Task progress bars */}
