@@ -106,6 +106,7 @@ export function MemberSidebar({ page, onChange, streak, sodSubmitted, eodSubmitt
   const items = [
     { key: "today",   icon: "📋", label: "Today's update" },
     { key: "history", icon: "🕓", label: "My history" },
+    { key: "recurring", icon: "🔁", label: "Recurring tasks" },
   ];
   return (
     <div className="sidebar">

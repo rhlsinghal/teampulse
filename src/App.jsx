@@ -8,7 +8,8 @@ import { getDocs, collection } from "firebase/firestore";
 
 // Member pages
 import TodayUpdate  from "./pages/member/TodayUpdate";
-import MyHistory    from "./pages/member/MyHistory";
+import MyHistory        from "./pages/member/MyHistory";
+import RecurringTasks   from "./pages/member/RecurringTasks";
 
 // Manager pages
 import TeamOverview   from "./pages/manager/TeamOverview";
@@ -121,8 +122,9 @@ function MemberApp({ user, userRecord, logout, displayName, isPreview, previewNa
         eodSubmitted={eodSubmitted}
         completionPct={completionPct}
       />
-      {page === "today"   && <TodayUpdate memberName={memberName} />}
-      {page === "history" && <MyHistory   memberName={memberName} />}
+      {page === "today"     && <TodayUpdate     memberName={memberName} />}
+      {page === "history"   && <MyHistory       memberName={memberName} />}
+      {page === "recurring" && <RecurringTasks  memberName={memberName} />}
     </div>
   );
 }
