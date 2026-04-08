@@ -4,46 +4,185 @@ import { fmt, TODAY } from "../../utils/dates";
 import { loadAllMembersLatest } from "../../hooks/useHistory";
 import { Loading } from "../../components/index.jsx";
 
+const PRIORITY_STYLE = {
+  "High":   { color: "var(--red)",   bg: "var(--red-bg)",   bd: "var(--red-bd)"   },
+  "Medium": { color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
+  "Low":    { color: "var(--blue)",  bg: "var(--blue-bg)",  bd: "var(--blue-bd)"  },
+};
+
+// Chip colour by EOD outcome (or SOD-only = blue = in progress)
+function chipStyle(outcome) {
+  if (outcome === "Done")       return { bg: "var(--green-bg)", bd: "var(--green-bd)", dot: "var(--green)",  text: "var(--green)"  };
+  if (outcome === "Carry over") return { bg: "var(--amber-bg)", bd: "var(--amber-bd)", dot: "var(--amber)",  text: "var(--amber)"  };
+  if (outcome === "Blocked")    return { bg: "var(--red-bg)",   bd: "var(--red-bd)",   dot: "var(--red)",    text: "var(--red)"    };
+  // SOD-only / in progress
+  return { bg: "var(--surface)", bd: "var(--border)", dot: "var(--blue)", text: "var(--muted)" };
+}
+
 function fmtTime(ts) {
   if (!ts) return null;
   return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
-// ── Inline tri-bar (done / carry / blocked) ───────────────────────────────────
-function TriBar({ done, carry, blocked, total }) {
-  if (!total) return <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>;
-  const donePct    = Math.round(done    / total * 100);
-  const carryPct   = Math.round(carry   / total * 100);
-  const blockedPct = Math.round(blocked / total * 100);
+// ── Task chip ─────────────────────────────────────────────────────────────────
+function TaskChip({ task }) {
+  const { bg, bd, dot, text } = chipStyle(task.outcome);
+  const isBlocked = task.outcome === "Blocked";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      {[
-        { pct: donePct,    color: "var(--green)",  label: `${done} done`    },
-        { pct: carryPct,   color: "var(--amber)",  label: `${carry} carry`  },
-        { pct: blockedPct, color: "var(--red)",    label: `${blocked} blocked` },
-      ].map(({ pct, color, label }) => (
-        pct > 0 ? (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ flex: 1, height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, borderRadius: 2, background: color }} />
-            </div>
-            <span style={{ fontSize: 9, color, width: 56, whiteSpace: "nowrap" }}>{label}</span>
-          </div>
-        ) : null
-      ))}
+    <div style={{
+      display: "flex", alignItems: "center", gap: 4,
+      background: bg, border: `0.5px solid ${bd}`,
+      borderRadius: 6, padding: "3px 8px", flexShrink: 0,
+    }}>
+      <div style={{ width: 5, height: 5, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+      {task.client && (
+        <span style={{ fontSize: 10, color: text, fontWeight: 500, whiteSpace: "nowrap" }}>{task.client}</span>
+      )}
+      <span style={{
+        fontSize: 10, color: text, whiteSpace: "nowrap",
+        maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis",
+      }}>
+        {task.text}{isBlocked ? " ⚑" : ""}
+      </span>
     </div>
   );
 }
 
-// ── Completion % circle ───────────────────────────────────────────────────────
-function PctBadge({ done, total, eodSubmitted }) {
-  if (!eodSubmitted || !total) return <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>;
-  const pct = Math.round(done / total * 100);
-  const color = pct === 100 ? "var(--green)" : pct > 50 ? "var(--accent)" : "var(--amber)";
+// ── Member row ────────────────────────────────────────────────────────────────
+function MemberRow({ member, entry, onViewProfile, isLast }) {
+  const color        = avatarColor(member.name);
+  const hasToday     = entry?.date === TODAY;
+  const sod          = entry?.sod  || null;
+  const eod          = entry?.eod  || null;
+  const sodSubmitted = !!sod?.submittedAt;
+  const eodSubmitted = !!eod?.submittedAt;
+  const bw           = sod?.bandwidth || entry?.bandwidth;
+  const bwS          = BW_STYLES[bw]  || BW_STYLES[3];
+  const bwL          = BANDWIDTH[bw]?.label;
+
+  const sodTasks = sod?.tasks || [];
+  const eodTasks = eod?.tasks || [];
+
+  // Build display tasks with outcome from EOD merged in
+  const displayTasks = eodSubmitted
+    ? eodTasks.map((t, i) => ({
+        client:  t.client  || sodTasks[i]?.client  || "",
+        text:    t.text    || sodTasks[i]?.text     || "",
+        priority: t.priority || sodTasks[i]?.priority || "Medium",
+        outcome: t.outcome,
+      }))
+    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", priority: t.priority || "Medium", outcome: null }));
+
+  const valid      = displayTasks.filter(t => t.text?.trim());
+  const total      = valid.length;
+  const done       = valid.filter(t => t.outcome === "Done").length;
+  const blocked    = valid.filter(t => t.outcome === "Blocked").length;
+  const hasBlocker = blocked > 0 || sodTasks.some(t => t.blocker?.trim());
+  const pct        = eodSubmitted && total ? Math.round(done / total * 100) : null;
+  const pctColor   = pct === 100 ? "var(--green)" : pct != null && pct > 50 ? "var(--accent)" : "var(--amber)";
+
   return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 18, fontWeight: 500, color, lineHeight: 1 }}>{pct}%</div>
-      <div style={{ fontSize: 9, color: "var(--faint)", marginTop: 1 }}>{done}/{total}</div>
+    <div
+      onClick={() => onViewProfile(member.name)}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "220px 1fr auto",
+        borderBottom: isLast ? "none" : "0.5px solid var(--border)",
+        background: !hasToday ? "var(--amber-bg)" : "transparent",
+        cursor: "pointer",
+        transition: "background 0.1s",
+      }}>
+
+      {/* ── Left: identity ── */}
+      <div style={{
+        padding: "10px 14px",
+        borderRight: "0.5px solid var(--border)",
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 6,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: color + "22", color,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 11, fontWeight: 500, flexShrink: 0 }}>
+            {initials(member.name)}
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500,
+              color: !hasToday ? "var(--muted)" : "var(--text)" }}>{member.name}</div>
+            <div style={{ fontSize: 9, color: "var(--faint)", marginTop: 1 }}>
+              {sodSubmitted ? `SOD ${fmtTime(sod.submittedAt)}` : ""}
+              {eodSubmitted ? ` · EOD ${fmtTime(eod.submittedAt)}`
+                : sodSubmitted ? " · EOD pending" : ""}
+            </div>
+          </div>
+        </div>
+        <div style={{ paddingLeft: 38, display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {bwL && hasToday && (
+            <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
+              color: bwS.color, background: bwS.bg, border: `0.5px solid ${bwS.bd}` }}>{bwL}</span>
+          )}
+          {!hasToday && (
+            <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
+              background: "var(--amber-bg)", color: "var(--amber)", border: "0.5px solid var(--amber-bd)" }}>
+              Not submitted
+            </span>
+          )}
+          {hasBlocker && (
+            <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 20, fontWeight: 500,
+              background: "var(--red-bg)", color: "var(--red)", border: "0.5px solid var(--red-bd)" }}>
+              ⚑ {blocked} blocker{blocked !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Middle: task chips ── */}
+      <div style={{
+        padding: "10px 14px",
+        display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5,
+      }}>
+        {!hasToday ? (
+          <span style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic" }}>
+            Last entry: {entry ? fmt(entry.date) : "never"}
+          </span>
+        ) : valid.length > 0 ? (
+          <>
+            {valid.map((t, i) => <TaskChip key={i} task={t} />)}
+          </>
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic" }}>No tasks recorded</span>
+        )}
+      </div>
+
+      {/* ── Right: done % ── */}
+      <div style={{
+        padding: "10px 18px",
+        borderLeft: "0.5px solid var(--border)",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", gap: 2,
+        minWidth: 72,
+      }}>
+        {pct != null ? (
+          <>
+            <div style={{ fontSize: 22, fontWeight: 500, color: pctColor, lineHeight: 1 }}>{pct}%</div>
+            <div style={{ fontSize: 9, color: "var(--faint)" }}>{done} of {total}</div>
+          </>
+        ) : hasToday && total > 0 ? (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "var(--blue)", lineHeight: 1 }}>{total}</div>
+            <div style={{ fontSize: 9, color: "var(--faint)" }}>planned</div>
+          </>
+        ) : hasToday ? (
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>
+        ) : (
+          <button
+            onClick={e => { e.stopPropagation(); }}
+            style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6,
+              border: "0.5px solid var(--amber-bd)", background: "transparent",
+              color: "var(--amber)", cursor: "pointer", fontFamily: "inherit" }}>
+            Remind
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -87,7 +226,8 @@ export default function TeamOverview({ members, onViewProfile }) {
            (e?.sod?.tasks || []).some(t => t.blocker?.trim()) ||
            !!e?.blockers?.trim();
   });
-  const bwValues   = submittedToday.map(m => latest[m.name]?.sod?.bandwidth || latest[m.name]?.bandwidth).filter(Boolean);
+  const bwValues   = submittedToday.map(m =>
+    latest[m.name]?.sod?.bandwidth || latest[m.name]?.bandwidth).filter(Boolean);
   const avgBw      = bwValues.length ? Math.round(bwValues.reduce((a, b) => a + b, 0) / bwValues.length) : null;
   const avgBwS     = BW_STYLES[avgBw] || BW_STYLES[3];
   const avgBwLabel = avgBw ? BANDWIDTH[avgBw]?.label : "—";
@@ -108,7 +248,7 @@ export default function TeamOverview({ members, onViewProfile }) {
     setSlackSending(false);
   };
 
-  // Sort: blocked first, then submitted, then not submitted
+  // Sort: blocked first → submitted → not submitted
   const sorted = [
     ...members.filter(m => {
       const e = latest[m.name];
@@ -152,160 +292,28 @@ export default function TeamOverview({ members, onViewProfile }) {
         <div className="stat-card"><div className="stat-value" style={{ color: avgBwS.color, fontSize: 16, paddingTop: 2 }}>{avgBwLabel}</div><div className="stat-label">Avg bandwidth</div></div>
       </div>
 
-      {/* Roster table */}
+      {/* Standup table */}
       <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         {/* Column headers */}
         <div style={{
-          display: "grid",
-          gridTemplateColumns: "180px 85px 95px 1fr 190px 64px",
-          padding: "7px 14px",
-          background: "var(--bg)",
+          display: "grid", gridTemplateColumns: "220px 1fr auto",
+          padding: "6px 14px", background: "var(--bg)",
           borderBottom: "0.5px solid var(--border)",
-          gap: 8,
         }}>
-          {["Member", "Bandwidth", "Status", "Today's tasks", "Task progress", "Done"].map(h => (
-            <div key={h} style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase",
-              letterSpacing: "0.07em", color: "var(--faint)" }}>{h}</div>
-          ))}
+          <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)" }}>Member</div>
+          <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)", paddingLeft: 14 }}>Today's tasks</div>
+          <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)", paddingRight: 4, minWidth: 72, textAlign: "center" }}>Done</div>
         </div>
 
-        {/* Rows */}
-        {sorted.map((m, idx) => {
-          const entry        = latest[m.name];
-          const hasToday     = entry?.date === TODAY;
-          const sod          = entry?.sod  || null;
-          const eod          = entry?.eod  || null;
-          const sodSubmitted = !!sod?.submittedAt;
-          const eodSubmitted = !!eod?.submittedAt;
-          const color        = avatarColor(m.name);
-          const bw           = sod?.bandwidth || entry?.bandwidth;
-          const bwS          = BW_STYLES[bw]  || BW_STYLES[3];
-          const bwL          = BANDWIDTH[bw]?.label;
-
-          const sodTasks = sod?.tasks || [];
-          const eodTasks = eod?.tasks || [];
-          const displayTasks = eodSubmitted
-            ? eodTasks.map((t, i) => ({ ...t, priority: t.priority || sodTasks[i]?.priority || "Medium" }))
-            : sodTasks;
-          const valid    = displayTasks.filter(t => t.text?.trim());
-          const total    = valid.length;
-          const done     = valid.filter(t => t.outcome === "Done").length;
-          const carry    = valid.filter(t => t.outcome === "Carry over").length;
-          const blocked  = valid.filter(t => t.outcome === "Blocked").length;
-
-          const hasBlocker = blocked > 0 || sodTasks.some(t => t.blocker?.trim());
-          const isLast     = idx === sorted.length - 1;
-
-          // Compact task list — client + task name, comma separated
-          return (
-            <div key={m.name}
-              onClick={() => onViewProfile(m.name)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "180px 85px 95px 1fr 190px 64px",
-                padding: "10px 14px",
-                gap: 8,
-                alignItems: "center",
-                cursor: "pointer",
-                borderBottom: isLast ? "none" : "0.5px solid var(--border)",
-                background: !hasToday ? "var(--amber-bg)"
-                  : hasBlocker ? "var(--red-bg)" + "18"
-                  : "transparent",
-              }}>
-
-              {/* Member */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                  background: color + "22", color, display: "flex", alignItems: "center",
-                  justifyContent: "center", fontSize: 10, fontWeight: 500 }}>
-                  {initials(m.name)}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 500,
-                    color: !hasToday ? "var(--muted)" : "var(--text)",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {m.name}
-                  </div>
-                  <div style={{ fontSize: 9, color: "var(--faint)", marginTop: 1 }}>
-                    {sodSubmitted ? `SOD ${fmtTime(sod.submittedAt)}` : ""}
-                    {eodSubmitted ? ` · EOD ${fmtTime(eod.submittedAt)}` : sodSubmitted ? " · EOD pending" : ""}
-                  </div>
-                </div>
-              </div>
-
-              {/* Bandwidth */}
-              <div>
-                {bwL && hasToday ? (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-                    color: bwS.color, background: bwS.bg, border: `0.5px solid ${bwS.bd}` }}>{bwL}</span>
-                ) : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
-              </div>
-
-              {/* Status */}
-              <div>
-                {!hasToday ? (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-                    background: "var(--amber-bg)", color: "var(--amber)", border: "0.5px solid var(--amber-bd)" }}>
-                    Not submitted
-                  </span>
-                ) : hasBlocker ? (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-                    background: "var(--red-bg)", color: "var(--red)", border: "0.5px solid var(--red-bd)" }}>
-                    ⚑ Blocked
-                  </span>
-                ) : eodSubmitted ? (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-                    background: "var(--green-bg)", color: "var(--green)", border: "0.5px solid var(--green-bd)" }}>
-                    EOD done
-                  </span>
-                ) : sodSubmitted ? (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-                    background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>
-                    SOD only
-                  </span>
-                ) : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
-              </div>
-
-              {/* Today's tasks — stacked, up to 3 */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {!hasToday ? (
-                  <span style={{ fontSize: 11, fontStyle: "italic", color: "var(--faint)" }}>Last: {entry ? fmt(entry.date) : "never"}</span>
-                ) : total > 0 ? (
-                  <>
-                    {valid.slice(0, 3).map((t, ti) => (
-                      <div key={ti} style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                        {t.client && (
-                          <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 10, fontWeight: 500,
-                            background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)",
-                            flexShrink: 0, whiteSpace: "nowrap" }}>{t.client}</span>
-                        )}
-                        <span style={{ fontSize: 11, color: "var(--muted)",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.text}</span>
-                      </div>
-                    ))}
-                    {valid.length > 3 && (
-                      <span style={{ fontSize: 10, color: "var(--faint)" }}>+{valid.length - 3} more</span>
-                    )}
-                  </>
-                ) : (
-                  <span style={{ fontSize: 11, fontStyle: "italic", color: "var(--faint)" }}>No tasks</span>
-                )}
-              </div>
-
-              {/* Task progress bars */}
-              <div>
-                {hasToday && eodSubmitted && total > 0
-                  ? <TriBar done={done} carry={carry} blocked={blocked} total={total} />
-                  : hasToday && total > 0
-                    ? <div style={{ fontSize: 11, color: "var(--muted)" }}>{total} planned · EOD pending</div>
-                    : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
-              </div>
-
-              {/* Done % */}
-              <PctBadge done={done} total={total} eodSubmitted={eodSubmitted && hasToday} />
-            </div>
-          );
-        })}
+        {sorted.map((m, i) => (
+          <MemberRow
+            key={m.name}
+            member={m}
+            entry={latest[m.name]}
+            onViewProfile={onViewProfile}
+            isLast={i === sorted.length - 1}
+          />
+        ))}
       </div>
     </div>
   );
