@@ -4,6 +4,7 @@ import { BANDWIDTH, BW_STYLES } from "../../utils/constants";
 import { fmt, TODAY } from "../../utils/dates";
 import { useHistory } from "../../hooks/useHistory";
 import { useRecurring } from "../../hooks/useRecurring";
+import { useSlack }     from "../../hooks/useSlack";
 
 const emptySOD = () => ({
   bandwidth: 3,
@@ -93,6 +94,7 @@ function SODReadOnly({ sod }) {
 export default function TodayUpdate({ memberName }) {
   const { entries, saving, saveSOD, saveEOD, getTodayEntry, getStreak } = useHistory(memberName);
   const { todayTasks: recurringToday } = useRecurring(memberName);
+  const { settings: slackSettings, postMessage } = useSlack(memberName);
   const { toast, show: showToast } = useToast();
 
   const todayEntry   = getTodayEntry();
@@ -103,7 +105,11 @@ export default function TodayUpdate({ memberName }) {
 
   const [sodForm, setSODForm] = useState(emptySOD());
   const [eodForm, setEODForm] = useState({ tasks: [], ...emptyEOD() });
-  const [eodExpanded, setEodExpanded] = useState(null);
+  const [eodExpanded,   setEodExpanded]   = useState(null);
+  const [slackModal,    setSlackModal]    = useState(null);  // null | "sod" | "eod"
+  const [slackPosting,  setSlackPosting]  = useState(false);
+  const [slackDone,     setSlackDone]     = useState({});    // { channelId: true/false }
+  const [selectedChans, setSelectedChans] = useState({});   // { channelId: bool }
 
   // Pre-fill SOD — if no SOD yet today, check yesterday's EOD for carry-overs
   useEffect(() => {
@@ -185,7 +191,80 @@ export default function TodayUpdate({ memberName }) {
   const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", fromSOD: false, adhoc: true, priority: "Medium", startDate: TODAY, dueDate: "", outcome: "Done", carryOver: false, notes: "", blockerDetail: "", blockerOwner: "" }] }));
   const removeEODTask = (i) => setEODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
-  const handleSaveSOD = async () => {
+  // ── Slack helpers ────────────────────────────────────────────────────────────
+  const buildSlackBlocks = (type) => {
+    const isSod  = type === "sod";
+    const tasks  = isSod ? (sodData?.tasks || []) : (eodData?.tasks || []);
+    const bw     = sodData?.bandwidth;
+    const bwLabel = bw ? ({ 1:"Low load", 2:"Light", 3:"Balanced", 4:"Heavy", 5:"Overloaded" }[bw] || "") : "";
+
+    const header = isSod
+      ? `:sunrise: *${memberName} — Start of Day* | ${fmt(TODAY)}`
+      : `:city_sunset: *${memberName} — End of Day* | ${fmt(TODAY)}`;
+
+    const lines = [];
+    if (isSod && bwLabel) lines.push(`*Bandwidth:* ${bwLabel}`);
+    lines.push("");
+    lines.push(isSod ? "*Tasks planned:*" : "*Task outcomes:*");
+
+    tasks.filter(t => t.text?.trim()).forEach(t => {
+      if (isSod) {
+        const pri = t.priority === "High" ? ":red_circle:" : t.priority === "Low" ? ":white_circle:" : ":large_blue_circle:";
+        const due = t.dueDate ? ` — Due ${t.dueDate}` : "";
+        const blk = t.blocker?.trim() ? ` :warning: _${t.blocker}_` : "";
+        lines.push(`${pri} [${t.priority || "Medium"}] ${t.text}${due}${blk}`);
+      } else {
+        const icon = t.outcome === "Done" ? ":white_check_mark:" : t.outcome === "Blocked" ? ":octagonal_sign:" : ":arrows_counterclockwise:";
+        const note = t.notes?.trim() ? ` _(${t.notes})_` : "";
+        lines.push(`${icon} ${t.text}${note}`);
+      }
+    });
+
+    const blockers = isSod
+      ? tasks.filter(t => t.blocker?.trim())
+      : tasks.filter(t => t.outcome === "Blocked");
+    if (!blockers.length) lines.push("", ":white_check_mark: No blockers");
+
+    const text = [header, ...lines].join("\n");
+    return {
+      text,
+      blocks: [
+        { type: "section", text: { type: "mrkdwn", text: header } },
+        { type: "divider" },
+        { type: "section", text: { type: "mrkdwn", text: lines.join("\n") || "—" } },
+      ],
+    };
+  };
+
+  const openSlackModal = (type) => {
+    const channels = slackSettings?.channels || [];
+    // Pre-select all configured channels
+    const init = {};
+    channels.forEach(c => { if (c.channelId?.trim()) init[c.channelId] = true; });
+    setSelectedChans(init);
+    setSlackDone({});
+    setSlackModal(type);
+  };
+
+  const postToSlack = async () => {
+    const channels = (slackSettings?.channels || []).filter(c => selectedChans[c.channelId]);
+    if (!channels.length) return;
+    setSlackPosting(true);
+    const { text, blocks } = buildSlackBlocks(slackModal);
+    const results = {};
+    for (const ch of channels) {
+      try {
+        await postMessage(ch.channelId, text, blocks);
+        results[ch.channelId] = "sent";
+      } catch (e) {
+        results[ch.channelId] = e.message || "error";
+      }
+    }
+    setSlackDone(results);
+    setSlackPosting(false);
+  };
+
+    const handleSaveSOD = async () => {
     if (!sodForm.tasks.some(t => t.text.trim())) { showToast("Add at least one task", "error"); return; }
     const ok = await saveSOD({ ...sodForm, submittedAt: Date.now() });
     showToast(ok ? "SOD submitted ✓" : "Save failed — try again", ok ? "success" : "error");
@@ -373,7 +452,17 @@ export default function TodayUpdate({ memberName }) {
             </div>
           </div>
         )}
-        {sodSubmitted && <div style={{ height: 12 }} />}
+        {sodSubmitted && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderTop: "0.5px solid var(--border)" }}>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>SOD submitted</span>
+            {slackSettings?.tokenSaved && (slackSettings?.channels || []).length > 0 && (
+              <button className="btn btn-ghost btn-sm" onClick={() => openSlackModal("sod")}
+                style={{ color: "#4A154B", borderColor: "#4A154B40", gap: 5 }}>
+                💬 Post SOD to Slack
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Divider */}
@@ -590,11 +679,103 @@ export default function TodayUpdate({ memberName }) {
                 style={{ background: "var(--green)", borderColor: "var(--green)" }}>
                 {saving ? <><Spinner white /> Saving...</> : eodSubmitted ? "Update EOD" : "Submit EOD"}
               </button>
+              {eodSubmitted && slackSettings?.tokenSaved && (slackSettings?.channels || []).length > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => openSlackModal("eod")}
+                  style={{ color: "#4A154B", borderColor: "#4A154B40" }}>
+                  💬 Post EOD to Slack
+                </button>
+              )}
             </div>
             </div>
           </>
         )}
       </div>
+
+      {/* ── Slack post modal ── */}
+      {slackModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)",
+            borderRadius: 14, width: 520, maxWidth: "95vw", maxHeight: "85vh",
+            overflow: "hidden", display: "flex", flexDirection: "column" }}>
+
+            {/* Header */}
+            <div style={{ padding: "12px 16px", borderBottom: "0.5px solid var(--border)",
+              display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  Post {slackModal === "sod" ? "SOD" : "EOD"} to Slack
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                  Select channels · message posts as you
+                </div>
+              </div>
+              <button onClick={() => setSlackModal(null)}
+                style={{ fontSize: 18, background: "none", border: "none", cursor: "pointer",
+                  color: "var(--faint)", lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ padding: "14px 16px", overflowY: "auto", flex: 1 }}>
+              {/* Channel selector */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase",
+                  letterSpacing: "0.07em", color: "var(--faint)", marginBottom: 8 }}>
+                  Select channels
+                </div>
+                {(slackSettings?.channels || []).filter(c => c.channelId?.trim()).map(c => (
+                  <div key={c.channelId} onClick={() => setSelectedChans(s => ({ ...s, [c.channelId]: !s[c.channelId] }))}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                      borderRadius: 8, cursor: "pointer", marginBottom: 5,
+                      background: selectedChans[c.channelId] ? "var(--blue-bg)" : "var(--bg)",
+                      border: `0.5px solid ${selectedChans[c.channelId] ? "var(--blue-bd)" : "var(--border)"}` }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                      background: selectedChans[c.channelId] ? "var(--accent)" : "var(--surface)",
+                      border: `0.5px solid ${selectedChans[c.channelId] ? "var(--accent)" : "var(--border)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {selectedChans[c.channelId] && <span style={{ fontSize: 10, color: "#fff" }}>✓</span>}
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 500 }}>{c.label || c.channelId}</span>
+                      <span style={{ fontSize: 10, color: "var(--faint)", marginLeft: 6,
+                        fontFamily: "JetBrains Mono, monospace" }}>{c.channelId}</span>
+                    </div>
+                    {slackDone[c.channelId] === "sent" && (
+                      <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--green)", fontWeight: 500 }}>✓ Sent</span>
+                    )}
+                    {slackDone[c.channelId] && slackDone[c.channelId] !== "sent" && (
+                      <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--red)" }}>✗ {slackDone[c.channelId]}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Message preview */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase",
+                  letterSpacing: "0.07em", color: "var(--faint)", marginBottom: 8 }}>
+                  Message preview
+                </div>
+                <div style={{ background: "var(--bg)", border: "0.5px solid var(--border)",
+                  borderRadius: 8, padding: "12px 14px",
+                  fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                  color: "var(--muted)", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
+                  {buildSlackBlocks(slackModal).text}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "10px 16px", borderTop: "0.5px solid var(--border)",
+              display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn btn-ghost" onClick={() => setSlackModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={postToSlack}
+                disabled={slackPosting || !Object.values(selectedChans).some(Boolean)}>
+                {slackPosting ? "Posting…" : `Post to ${Object.values(selectedChans).filter(Boolean).length} channel${Object.values(selectedChans).filter(Boolean).length !== 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toast message={toast?.msg} type={toast?.type} />
     </div>

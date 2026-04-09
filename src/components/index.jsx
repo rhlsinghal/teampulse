@@ -107,6 +107,7 @@ export function MemberSidebar({ page, onChange, streak, sodSubmitted, eodSubmitt
     { key: "today",   icon: "📋", label: "Today's update" },
     { key: "history", icon: "🕓", label: "My history" },
     { key: "recurring", icon: "🔁", label: "Recurring tasks" },
+    { key: "slack",     icon: "💬", label: "Slack settings"  },
   ];
   return (
     <div className="sidebar">
