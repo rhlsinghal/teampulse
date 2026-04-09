@@ -65,6 +65,7 @@ export default function SprintReport() {
   const [copied,      setCopied]      = useState(false);
   const [drafts,      setDrafts]      = useState([]);
   const [draftSaving, setDraftSaving] = useState(false);
+  const [rawData,     setRawData]     = useState(null);
   const [draftSaved,  setDraftSaved]  = useState(false);
   const [draftsOpen,  setDraftsOpen]  = useState(false);
   const reportRef = useRef(null);
@@ -119,6 +120,7 @@ export default function SprintReport() {
       if (data.error) { setError(data.error); }
       else {
         setHtml(data.html);
+        setRawData(data.rawData || null);
         setMeta({ sprints: data.sprints, bugs: data.bugs, month: data.month, label: monthlyLabel(), sprintNames: data.sprintNames, type: "monthly" });
       }
     } catch (e) { setError("Failed to connect to the proxy."); }
@@ -142,6 +144,7 @@ export default function SprintReport() {
       if (data.error) { setError(data.error); }
       else {
         setHtml(data.html);
+        setRawData(data.rawData || null);
         setMeta({ sprints: data.sprints, bugs: data.bugs, label: quarterlyLabel(), sprintNames: data.sprintNames, quarter: data.quarter, type: "quarterly" });
       }
     } catch (e) { setError("Failed to connect to the proxy."); }
@@ -244,6 +247,15 @@ export default function SprintReport() {
 
   useEffect(() => { loadDrafts(); }, []);
 
+  // Load SheetJS for Excel export
+  useEffect(() => {
+    if (window.XLSX) return;
+    const script   = document.createElement("script");
+    script.src     = "https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js";
+    script.async   = true;
+    document.head.appendChild(script);
+  }, []);
+
   // ── Export helpers ─────────────────────────────────────────────────────────
   const downloadHtml = () => {
     const annotated = buildAnnotatedHtml();
@@ -262,6 +274,101 @@ export default function SprintReport() {
     win.document.write(annotated);
     win.document.close();
     setTimeout(() => { win.focus(); win.print(); }, 600);
+  };
+
+  // ── Export Excel ────────────────────────────────────────────────────────────
+  const exportExcel = () => {
+    if (!rawData) return;
+
+    const fmtDate = (ts) => {
+      if (!ts) return "";
+      const d = new Date(typeof ts === "number" ? ts : parseInt(ts));
+      return isNaN(d) ? "" : d.toLocaleDateString("en-GB");
+    };
+    const fmtAssignees = (arr) => (arr || []).map(a => a.username || a.email || "").filter(Boolean).join(", ");
+
+    const XLSX = window.XLSX;
+    if (!XLSX) { alert("Excel library not loaded — please try again in a moment."); return; }
+
+    const wb = XLSX.utils.book_new();
+
+    // ── Summary sheet ──────────────────────────────────────────────────────
+    const summaryRows = [
+      ["iDerive DT Monthly Report — Raw Data Export"],
+      ["Report", meta?.label || ""],
+      ["Sprints", (rawData.sprints || []).map(s => s.label).join(", ")],
+      ["Generated", new Date().toLocaleString("en-GB")],
+      [],
+      ["Sprint", "Total DT Tasks", "Done", "Open", "Blocked", "Sprint Start", "Sprint End"],
+    ];
+    (rawData.sprints || []).forEach(s => {
+      summaryRows.push([
+        s.label,
+        s.dt_tasks.length,
+        s.done_dt.length,
+        s.open_dt.length,
+        s.blocked_dt.length,
+        s.startDate,
+        s.dueDate,
+      ]);
+    });
+    summaryRows.push([], ["Total Bugs", (rawData.bugs || []).length]);
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 30 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+    // ── One sheet per sprint ───────────────────────────────────────────────
+    (rawData.sprints || []).forEach(s => {
+      const header = ["Task ID", "Task Name", "Status", "Assignees", "Due Date", "Date Closed", "Date Updated", "URL"];
+      const rows   = [header];
+      (s.dt_tasks || []).forEach(t => {
+        rows.push([
+          t.customId || t.id || "",
+          t.name || "",
+          t.status || "",
+          fmtAssignees(t.assignees),
+          fmtDate(t.dueDate),
+          fmtDate(t.dateClosed),
+          fmtDate(t.dateUpdated),
+          t.url || "",
+        ]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"] = [
+        { wch: 14 }, { wch: 45 }, { wch: 18 }, { wch: 25 },
+        { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 40 },
+      ];
+      // Safe sheet name (max 31 chars, no special chars)
+      const sheetName = (s.label || `Sprint ${s.num}`).replace(/[\/*?:\[\]]/g, "").slice(0, 31);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+
+    // ── Bugs sheet ─────────────────────────────────────────────────────────
+    if ((rawData.bugs || []).length > 0) {
+      const bugHeader = ["Task ID", "Task Name", "Status", "Assignees", "Watchers", "Due Date", "Date Closed", "URL"];
+      const bugRows   = [bugHeader];
+      rawData.bugs.forEach(t => {
+        bugRows.push([
+          t.customId || t.id || "",
+          t.name || "",
+          t.status || "",
+          fmtAssignees(t.assignees),
+          fmtAssignees(t.watchers),
+          fmtDate(t.dueDate),
+          fmtDate(t.dateClosed),
+          t.url || "",
+        ]);
+      });
+      const wsBugs = XLSX.utils.aoa_to_sheet(bugRows);
+      wsBugs["!cols"] = [
+        { wch: 14 }, { wch: 45 }, { wch: 18 }, { wch: 25 },
+        { wch: 25 }, { wch: 12 }, { wch: 14 }, { wch: 40 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsBugs, "Bugs");
+    }
+
+    const filename = `iDerive_Report_${(meta?.label || "report").replace(/\s+/g, "_")}.xlsx`;
+    XLSX.writeFile(wb, filename);
   };
 
   const copyHtml = async () => {
@@ -329,6 +436,11 @@ export default function SprintReport() {
             <button className="btn btn-ghost btn-sm" onClick={copyHtml}>{copied ? "✓ Copied" : "Copy HTML"}</button>
             <button className="btn btn-ghost btn-sm" onClick={downloadHtml}>Download HTML</button>
             <button className="btn btn-ghost btn-sm" onClick={downloadPdf}>Export PDF</button>
+            <button className="btn btn-ghost btn-sm" onClick={exportExcel} disabled={!rawData}
+              title={rawData ? "Export raw task data to Excel" : "Generate a report first"}
+              style={{ color: rawData ? "var(--green)" : "var(--faint)", borderColor: rawData ? "var(--green-bd)" : "var(--border)" }}>
+              ⬇ Export Excel
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={saveDraft} disabled={draftSaving}
               style={{ color: draftSaved ? "var(--green)" : "" }}>
               {draftSaving ? "Saving…" : draftSaved ? "✓ Draft saved" : "Save draft"}
