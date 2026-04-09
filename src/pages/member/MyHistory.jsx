@@ -62,7 +62,6 @@ function buildCarryOvers(entries) {
       const key    = `${t.client||""}|${t.text}|${origin}`;
       if (!taskMap[key]) {
         taskMap[key] = {
-          project: t.project || sodTask.project || "",
           client: t.client||"", text: t.text||"",
           priority:  t.priority  || sodTask.priority  || "Medium",
           startDate: t.startDate || sodTask.startDate || origin,
@@ -270,8 +269,7 @@ function NewDayDetail({ entry }) {
               <table className="task-table" style={{ minWidth: 500 }}>
                 <thead>
                   <tr>
-                    <th style={{ width: 85 }}>Project</th>
-                    <th style={{ width: 85 }}>Client</th>
+                    <th style={{ width: 90 }}>Client</th>
                     <th style={{ width: 80 }}>Priority</th>
                     <th>Task</th>
                     <th style={{ width: 96 }}>Start</th>
@@ -284,7 +282,6 @@ function NewDayDetail({ entry }) {
                     const ps = PRIORITY_STYLE[t.priority || "Medium"];
                     return (
                       <tr key={i}>
-                        <td style={{ fontSize: 11, color: t.project ? "var(--muted)" : "var(--faint)" }}>{t.project || "—"}</td>
                         <td>{t.client ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span> : <span style={{ color: "var(--faint)" }}>—</span>}</td>
                         <td><span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority || "Medium"}</span></td>
                         <td style={{ fontSize: 12, fontWeight: 500 }}>{t.text || "—"}</td>
@@ -320,8 +317,7 @@ function NewDayDetail({ entry }) {
                 <table className="task-table" style={{ minWidth: 500 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: 85 }}>Project</th>
-                      <th style={{ width: 85 }}>Client</th>
+                      <th style={{ width: 90 }}>Client</th>
                       <th style={{ width: 80 }}>Priority</th>
                       <th>Task</th>
                       <th style={{ width: 108 }}>Outcome</th>
@@ -334,7 +330,6 @@ function NewDayDetail({ entry }) {
                       const ps = PRIORITY_STYLE[t.priority || "Medium"];
                       return (
                         <tr key={i}>
-                          <td style={{ fontSize: 11, color: t.project ? "var(--muted)" : "var(--faint)" }}>{t.project || "—"}</td>
                           <td>{t.client ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span> : <span style={{ color: "var(--faint)" }}>—</span>}</td>
                           <td><span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 20, fontWeight: 500, color: ps.color, background: ps.bg, border: `0.5px solid ${ps.bd}` }}>{t.priority || "Medium"}</span></td>
                           <td style={{ fontSize: 12, fontWeight: 500 }}>
@@ -439,7 +434,7 @@ function buildSummary(entries, year, month) {
       if (isRecurring) {
         const key = rawSod.recurringId || `${t.client || ""}|${t.text}`;
         if (!recurringMap[key]) {
-          recurringMap[key] = { text: t.text, project: t.project || "", client: t.client || "", scheduledDays: 0, doneDays: 0 };
+          recurringMap[key] = { text: t.text, client: t.client || "", scheduledDays: 0, doneDays: 0 };
         }
         recurringMap[key].scheduledDays++;
         if (t.status === "Done" || t.outcome === "Done") recurringMap[key].doneDays++;
@@ -585,7 +580,6 @@ export default function MyHistory({ memberName }) {
                                 {r.client}
                               </span>
                             )}
-                            {r.project && <span style={{ fontSize:10,padding:"1px 6px",borderRadius:20,fontWeight:500,background:"var(--surface)",color:"var(--muted)",border:"0.5px solid var(--border)",marginRight:4 }}>{r.project}</span>}
                             <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{r.text}</span>
                             <span style={{ fontSize: 12, fontWeight: 500, color: col }}>{r.doneDays} / {r.scheduledDays} days</span>
                             <span style={{ fontSize: 11, fontWeight: 500, color: col, minWidth: 36, textAlign: "right" }}>{pct}%</span>
@@ -671,7 +665,7 @@ export default function MyHistory({ memberName }) {
                                 const overdue   = t.dueDate && t.dueDate < TODAY;
                                 return (
                                   <tr key={i} style={{ borderTop:"0.5px solid var(--border)",background:isBlocked?"var(--red-bg)":"transparent" }}>
-                                    <td style={{ padding:"8px 12px" }}>{(() => { const lbl = t.project && t.client ? `${t.project} › ${t.client}` : t.project || t.client || null; return lbl ? <span style={{ fontSize:10,padding:"2px 7px",borderRadius:20,fontWeight:500,background:"var(--blue-bg)",color:"var(--blue)",border:"0.5px solid var(--blue-bd)" }}>{lbl}</span> : <span style={{ fontSize:11,color:"var(--faint)" }}>—</span>; })()}</td>
+                                    <td style={{ padding:"8px 12px" }}>{cPill(t.client)}</td>
                                     <td style={{ padding:"8px 12px" }}>{pPill(t.priority)}</td>
                                     <td style={{ padding:"8px 12px" }}>
                                       <div style={{ fontSize:12,fontWeight:500 }}>{t.text}</div>
@@ -763,7 +757,6 @@ export default function MyHistory({ memberName }) {
                         return (
                           <tr key={`${ei}-${ti}`} style={{ background: (summary.rawEntries?.[ei]?.sod?.tasks?.[ti]?.isRecurring) ? "#EEEDFE15" : "transparent" }}>
                             <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{fmt(e.date)}</td>
-                            <td style={{ fontSize:11,color:t.project?"var(--muted)":"var(--faint)" }}>{t.project||"—"}</td>
                             <td>{t.client ? <span className="badge badge-blue" style={{ fontSize:11 }}>{t.client}</span> : <span style={{ color:"var(--faint)" }}>—</span>}</td>
                             <td><span style={{ fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:500,color:ps.color,background:ps.bg,border:`0.5px solid ${ps.bd}` }}>{t.priority||"Medium"}</span></td>
                             <td className="text-sm">

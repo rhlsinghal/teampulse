@@ -240,12 +240,13 @@ export function StatusBadge({ status }) {
   return <span className="badge" style={{ color: s.color, background: s.bg, borderColor: s.bd }}>{status}</span>;
 }
 
-export function ClientBadge({ project, client }) {
-  const label = project && client ? `${project} › ${client}` : project || client || null;
-  if (!label) return <span className="badge badge-gray">—</span>;
-  const lower = label.toLowerCase();
-  if (lower.includes("internal")) return <span className="badge badge-gray">{label}</span>;
-  return <span className="badge badge-blue">{label}</span>;
+export function ClientBadge({ client }) {
+  if (!client) return <span className="badge badge-gray">—</span>;
+  const lower = client.toLowerCase();
+  if (lower.includes("internal")) return <span className="badge badge-gray">{client}</span>;
+  if (lower.includes("client a") || lower.includes("sprint")) return <span className="badge badge-blue">{client}</span>;
+  if (lower.includes("client b") || lower.includes("infra")) return <span className="badge badge-amber">{client}</span>;
+  return <span className="badge badge-accent">{client}</span>;
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────

@@ -134,7 +134,7 @@ export default function AIAssistant({ members }) {
     return allData.map(({ member, entries }) => {
       if (!entries.length) return `${member}: no updates in last 30 days`;
       const latest = entries[0];
-      const taskStr = latest.tasks.map(t => { const proj = t.project && t.client ? `${t.project}›${t.client}` : t.project || t.client || "Internal"; return `${proj}:${t.text}[${t.outcome || t.status}][${t.priority || "Medium"}]`; }).join(", ");
+      const taskStr = latest.tasks.map(t => `${t.client || "Internal"}:${t.text}[${t.outcome || t.status}][${t.priority || "Medium"}]`).join(", ");
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
       const weekEntries = entries.filter(e => new Date(e.date + "T00:00:00") >= weekAgo);
       const weekDone = weekEntries.reduce((a, e) => a + e.doneTasks, 0);

@@ -39,10 +39,9 @@ function TaskChip({ task }) {
       {isRecurring
         ? <span style={{ fontSize: 9, color: "#534AB7", flexShrink: 0 }}>↻</span>
         : <div style={{ width: 5, height: 5, borderRadius: "50%", background: dot, flexShrink: 0 }} />}
-      {(task.project || task.client) && (() => {
-        const lbl = task.project && task.client ? `${task.project} › ${task.client}` : task.project || task.client;
-        return <span style={{ fontSize: 10, color: isRecurring ? "#534AB7" : text, fontWeight: 500, whiteSpace: "nowrap" }}>{lbl}</span>;
-      })()}
+      {task.client && (
+        <span style={{ fontSize: 10, color: isRecurring ? "#534AB7" : text, fontWeight: 500, whiteSpace: "nowrap" }}>{task.client}</span>
+      )}
       <span style={{
         fontSize: 10, color: isRecurring ? "#534AB7" : text, whiteSpace: "nowrap",
         maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis",
@@ -71,14 +70,13 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
   // Build display tasks with outcome from EOD merged in
   const displayTasks = eodSubmitted
     ? eodTasks.map((t, i) => ({
-        project:    t.project    || sodTasks[i]?.project    || "",
         client:     t.client     || sodTasks[i]?.client     || "",
         text:       t.text       || sodTasks[i]?.text       || "",
         priority:   t.priority   || sodTasks[i]?.priority   || "Medium",
         outcome:    t.outcome,
         isRecurring: sodTasks[i]?.isRecurring === true,
       }))
-    : sodTasks.map(t => ({ project: t.project || "", client: t.client || "", text: t.text || "", priority: t.priority || "Medium", outcome: null, isRecurring: t.isRecurring === true }));
+    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", priority: t.priority || "Medium", outcome: null, isRecurring: t.isRecurring === true }));
 
   const valid      = displayTasks.filter(t => t.text?.trim());
   // Exclude recurring tasks from done% — they are ops tasks, not project completion

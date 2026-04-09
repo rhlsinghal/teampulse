@@ -8,7 +8,7 @@ import { useSlack }     from "../../hooks/useSlack";
 
 const emptySOD = () => ({
   bandwidth: 3,
-  tasks: [{ project: "", client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }],
+  tasks: [{ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }],
 });
 
 const emptyEOD = () => ({});
@@ -60,12 +60,9 @@ function SODReadOnly({ sod }) {
         {(sod.tasks || []).map((t, i) => (
           <div key={i} style={{ border: "0.5px solid var(--border)", borderRadius: 8, padding: "9px 10px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-              {(() => {
-                const lbl = t.project && t.client ? `${t.project} › ${t.client}` : t.project || t.client || null;
-                return lbl
-                  ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{lbl}</span>
-                  : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>;
-              })()}
+              {t.client
+                ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
+                : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
               <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{t.text || "—"}</span>
               {t.blocker?.trim() && (
                 <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>
@@ -120,8 +117,8 @@ export default function TodayUpdate({ memberName }) {
       setSODForm({
         bandwidth: sodData.bandwidth || 3,
         tasks: sodData.tasks?.length
-          ? sodData.tasks.map(t => ({ project: "", client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "", ...t }))
-          : [{ project: "", client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }],
+          ? sodData.tasks.map(t => ({ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "", ...t }))
+          : [{ client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }],
       });
     } else if (entries.length > 0) {
       // No SOD today — check yesterday's EOD for carry-over tasks
@@ -132,7 +129,7 @@ export default function TodayUpdate({ memberName }) {
           setSODForm(f => ({
             ...f,
             tasks: carryOvers.map(t => ({
-              project: t.project || "", client: t.client || "", text: t.text || "", blocker: "",
+              client: t.client || "", text: t.text || "", blocker: "",
               priority: t.priority || "Medium", startDate: t.startDate || "", dueDate: t.dueDate || "",
               isCarryOver: true, carryOverFrom: yesterday.date,
             })),
@@ -150,7 +147,7 @@ export default function TodayUpdate({ memberName }) {
       const toAdd = recurringToday.filter(r => !existingTexts.has(r.text?.trim()));
       if (!toAdd.length) return f;
       const recurringTasks = toAdd.map(r => ({
-        project: r.project || "", client: r.client || "", text: r.text || "", blocker: "",
+        client: r.client || "", text: r.text || "", blocker: "",
         priority: r.priority || "Medium", startDate: TODAY, dueDate: TODAY,
         isRecurring: true, recurringId: r.id,
       }));
@@ -166,7 +163,6 @@ export default function TodayUpdate({ memberName }) {
       const sodTasks = sodData?.tasks || [];
       const existing = eodData?.tasks || [];
       const merged = sodTasks.map((t, i) => ({
-        project:       t.project || "",
         client:        t.client,
         text:          t.text,
         priority:      t.priority || "Medium",
@@ -186,13 +182,13 @@ export default function TodayUpdate({ memberName }) {
   }, [entries]);
 
   // SOD helpers
-  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { project: "", client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }] }));
+  const addSODTask    = () => setSODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", blocker: "", priority: "Medium", startDate: "", dueDate: "" }] }));
   const updateSODTask = (i, field, val) => setSODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
   const removeSODTask = (i) => setSODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
   // EOD helpers
   const updateEODTask = (i, field, val) => setEODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
-  const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { project: "", client: "", text: "", fromSOD: false, adhoc: true, priority: "Medium", startDate: TODAY, dueDate: "", outcome: "Done", carryOver: false, notes: "", blockerDetail: "", blockerOwner: "" }] }));
+  const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", fromSOD: false, adhoc: true, priority: "Medium", startDate: TODAY, dueDate: "", outcome: "Done", carryOver: false, notes: "", blockerDetail: "", blockerOwner: "" }] }));
   const removeEODTask = (i) => setEODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
   // ── Slack helpers ────────────────────────────────────────────────────────────
@@ -216,10 +212,8 @@ export default function TodayUpdate({ memberName }) {
     const lines = [""];
 
     tasks.filter(t => t.text?.trim()).forEach((t, i) => {
-      const proj     = t.project?.trim();
-      const cli      = t.client?.trim();
-      const prefix   = proj && cli ? `${proj} › ${cli}` : proj || cli || "Internal";
-      const taskLine = `${i + 1}. *${prefix}* | ${t.text}`;
+      const client   = t.client?.trim() || "Internal";
+      const taskLine = `${i + 1}. *${client}* | ${t.text}`;
       const meta     = [];
 
       if (isSod) {
@@ -395,8 +389,7 @@ export default function TodayUpdate({ memberName }) {
                 <table className="task-table" style={{ minWidth: 760 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: 105 }}>Project</th>
-                      <th style={{ width: 105 }}>Client</th>
+                      <th style={{ width: 115 }}>Client</th>
                       <th style={{ width: 100 }}>Priority</th>
                       <th style={{ minWidth: 260 }}>Task</th>
                       <th style={{ width: 120 }}>Start date</th>
@@ -437,10 +430,6 @@ export default function TodayUpdate({ memberName }) {
                             </tr>
                           )}
                           <tr key={i} style={{ background: t.isRecurring ? "#EEEDFE20" : "transparent" }}>
-                          <td>
-                            <input className="task-cell-input" placeholder="Project..." value={t.project || ""}
-                              onChange={e => updateSODTask(i, "project", e.target.value)} />
-                          </td>
                           <td>
                             <input className="task-cell-input" placeholder="Client..." value={t.client}
                               onChange={e => updateSODTask(i, "client", e.target.value)} />
@@ -552,8 +541,7 @@ export default function TodayUpdate({ memberName }) {
                 <table className="task-table" style={{ minWidth: 700 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: 100 }}>Project</th>
-                      <th style={{ width: 100 }}>Client</th>
+                      <th style={{ width: 110 }}>Client</th>
                       <th style={{ width: 95 }}>Priority</th>
                       <th style={{ minWidth: 220 }}>Task</th>
                       <th style={{ width: 115 }}>Outcome</th>
@@ -571,13 +559,6 @@ export default function TodayUpdate({ memberName }) {
                       const ps        = PRIORITY_STYLE[t.priority || "Medium"];
                       return (
                         <tr key={i} style={{ background: isAdhoc ? "#fffbeb" : "transparent" }}>
-                          {/* Project */}
-                          <td>
-                            {isAdhoc
-                              ? <input className="task-cell-input" placeholder="Project..." value={t.project || ""}
-                                  onChange={e => updateEODTask(i, "project", e.target.value)} />
-                              : <span style={{ fontSize: 11, color: t.project ? "var(--muted)" : "var(--faint)" }}>{t.project || "—"}</span>}
-                          </td>
                           {/* Client */}
                           <td>
                             {isAdhoc

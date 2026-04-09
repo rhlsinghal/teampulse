@@ -33,8 +33,7 @@ export default function Blockers({ members }) {
                   date:         e.date,
                   text:         displayText,
                   taskText:     t.text,
-                  project:      t.project || null,
-                client:       t.client || null,
+                  client:       t.client || null,
                   resolved:     isResolved,
                   resolvedDate: t.blockerResolvedDate || null,
                 };
@@ -47,7 +46,6 @@ export default function Blockers({ members }) {
             date:         e.date,
             text:         e.blockers,
             taskText:     null,
-            project:      e.tasks?.[0]?.project || null,
             client:       e.tasks?.[0]?.client || null,
             resolved:     e.blockerResolved || false,
             resolvedDate: e.blockerResolvedDate || null,
@@ -167,7 +165,7 @@ export default function Blockers({ members }) {
                       {b.taskText && <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>Task: {b.taskText}</div>}
                       {b.text}
                     </td>
-                    <td><ClientBadge project={b.project} client={b.client} /></td>
+                    <td>{b.client ? <ClientBadge client={b.client} /> : <span className="text-faint">—</span>}</td>
                     <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--muted)" }}>{fmt(b.date)}</td>
                     <td>
                       <span className="badge" style={{

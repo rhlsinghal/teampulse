@@ -34,11 +34,10 @@ function PriorityPill({ priority }) {
   return <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 20, fontWeight: 500,
     color: s.color, background: s.bg, border: `0.5px solid ${s.bd}` }}>{priority || "Medium"}</span>;
 }
-function ClientPill({ project, client }) {
-  const lbl = project && client ? `${project} › ${client}` : project || client || null;
-  if (!lbl) return <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span>;
+function ClientPill({ client }) {
+  if (!client) return <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span>;
   return <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 500,
-    background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>{lbl}</span>;
+    background: "var(--blue-bg)", color: "var(--blue)", border: "0.5px solid var(--blue-bd)" }}>{client}</span>;
 }
 
 // ── Mini heatmap ──────────────────────────────────────────────────────────────
@@ -155,7 +154,7 @@ function TodaySection({ entry }) {
                 const overdue = t.dueDate && t.dueDate < TODAY && t.outcome !== "Done";
                 return (
                   <tr key={i} style={{ background: t.outcome === "Blocked" ? "var(--red-bg)" : t.adhoc ? "#fffbeb" : "transparent" }}>
-                    <td><ClientPill project={t.project} client={t.client} /></td>
+                    <td><ClientPill client={t.client} /></td>
                     <td><PriorityPill priority={t.priority} /></td>
                     <td style={{ fontSize: 12, fontWeight: 500 }}>
                       {t.isRecurring && (
@@ -390,7 +389,7 @@ function CarryOverSection({ entries }) {
                   return (
                     <tr key={i} style={{ borderTop:"0.5px solid var(--border)",
                       background: isBlocked ? "var(--red-bg)" : "transparent" }}>
-                      <td style={{ padding:"8px 12px" }}><ClientPill project={t.project} client={t.client} /></td>
+                      <td style={{ padding:"8px 12px" }}><ClientPill client={t.client} /></td>
                       <td style={{ padding:"8px 12px" }}><PriorityPill priority={t.priority} /></td>
                       <td style={{ padding:"8px 12px" }}>
                         <div style={{ fontSize:12, fontWeight:500 }}>{t.text}</div>
@@ -457,7 +456,7 @@ function CarryOverSection({ entries }) {
                 {completed.map((t, i) => (
                   <tr key={i} style={{ borderTop:"0.5px solid var(--border)",
                     background: i%2===1 ? "var(--bg)" : "transparent" }}>
-                    <td style={{ padding:"7px 12px" }}><ClientPill project={t.project} client={t.client} /></td>
+                    <td style={{ padding:"7px 12px" }}><ClientPill client={t.client} /></td>
                     <td style={{ padding:"7px 12px" }}><PriorityPill priority={t.priority} /></td>
                     <td style={{ padding:"7px 12px", fontSize:12, fontWeight:500 }}>{t.text}</td>
                     <td style={{ padding:"7px 12px", fontSize:11,
@@ -495,7 +494,6 @@ function TaskHistory({ entries }) {
   );
 
   const clients  = [...new Set(allTasks.map(t => t.client).filter(Boolean))].sort();
-  const projects = [...new Set(allTasks.map(t => t.project).filter(Boolean))].sort();
   const outcomes = ["Done", "Carry over", "Blocked", "In Progress"];
 
   const filtered = allTasks.filter(t => {
@@ -552,7 +550,7 @@ function TaskHistory({ entries }) {
                 return (
                   <tr key={i}>
                     <td style={{ fontFamily:"JetBrains Mono, monospace", fontSize:11, color:"var(--muted)" }}>{fmt(t.date)}</td>
-                    <td><ClientPill project={t.project} client={t.client} /></td>
+                    <td><ClientPill client={t.client} /></td>
                     <td><PriorityPill priority={t.priority} /></td>
                     <td style={{ fontSize:12 }}>{t.text}</td>
                     <td style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace", color:"var(--muted)" }}>{t.startDate||"—"}</td>
@@ -619,7 +617,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const entryDates   = entries.map(e => e.date);
   const blockerDates = normed.filter(e => e.blockers?.trim()).map(e => e.date);
   const clientCounts = {};
-  allTasks.forEach(t => { const c = t.project && t.client ? `${t.project} › ${t.client}` : t.project || t.client || "Internal"; clientCounts[c] = (clientCounts[c] || 0) + 1; });
+  allTasks.forEach(t => { const c = t.client || "Internal"; clientCounts[c] = (clientCounts[c] || 0) + 1; });
   const topClient = Object.entries(clientCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—";
   const totalTasks = allTasks.length;
 
