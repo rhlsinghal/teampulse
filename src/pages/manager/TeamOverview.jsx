@@ -93,7 +93,7 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
       onClick={() => onViewProfile(member.name)}
       style={{
         display: "grid",
-        gridTemplateColumns: "220px 1fr auto",
+        gridTemplateColumns: "220px 1fr 72px",
         borderBottom: isLast ? "none" : "0.5px solid var(--border)",
         background: !hasToday ? "var(--amber-bg)" : "transparent",
         cursor: "pointer",
@@ -303,13 +303,13 @@ export default function TeamOverview({ members, onViewProfile }) {
       <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         {/* Column headers */}
         <div style={{
-          display: "grid", gridTemplateColumns: "220px 1fr auto",
+          display: "grid", gridTemplateColumns: "220px 1fr 72px",
           padding: "6px 14px", background: "var(--bg)",
           borderBottom: "0.5px solid var(--border)",
         }}>
           <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)" }}>Member</div>
           <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)", paddingLeft: 14 }}>Today's tasks</div>
-          <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)", paddingRight: 4, minWidth: 72, textAlign: "center" }}>Done</div>
+          <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)", padding: "10px 18px", width: 72, textAlign: "center" }}>Done</div>
         </div>
 
         {sorted.map((m, i) => (
