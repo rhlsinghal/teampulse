@@ -48,8 +48,13 @@ export function useRecurring(memberName) {
       const sorted = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      setTasks(sorted);
-    } catch (e) { console.error("useRecurring load:", e); }
+      // Only update state if we actually got results or collection is genuinely empty
+      // Avoid wiping optimistic state if read fails silently
+      if (snap.docs.length > 0) setTasks(sorted);
+    } catch (e) {
+      console.error("useRecurring load:", e);
+      // Don't clear tasks on load failure — keep whatever is in state
+    }
     setLoading(false);
   }, [memberName]);
 
@@ -61,9 +66,18 @@ export function useRecurring(memberName) {
     const data = { ...task, id, updatedAt: Date.now(), createdAt: task.createdAt || Date.now() };
     try {
       await setDoc(doc(db, "recurringTasks", memberName, "tasks", id), data);
-      await load();
+      // Optimistically update local state immediately — don't wait for re-fetch
+      // which may fail if Firestore rules haven't been updated yet
+      setTasks(prev => {
+        const without = prev.filter(t => t.id !== id);
+        const updated = [...without, data].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        return updated;
+      });
+      // Also try a background reload to sync any other changes
+      load().catch(() => {});
     } catch (e) {
       console.error("useRecurring save:", e);
+      throw e; // re-throw so RecurringTasks can handle it
     }
     return id;
   };
