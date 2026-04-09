@@ -36,5 +36,5 @@ export const emptyForm = () => ({
   blockers:  "",
   bandwidth: 3,
   note:      "",
-  tasks:     [{ client: "", text: "", status: "In Progress" }],
+  tasks:     [{ project: "", client: "", text: "", status: "In Progress" }],
 });

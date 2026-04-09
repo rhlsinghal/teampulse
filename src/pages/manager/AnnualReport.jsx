@@ -43,7 +43,7 @@ export default function AnnualReport({ members }) {
     setAiLoading(true);
     try {
       const snapshot = monthlySums.map((s, i) => s
-        ? `${MONTHS_SHORT[i]}: submitted=${s.daysSubmitted}, tasks=${s.totalTasks}, blockers=${s.totalBlockers}, topClient=${s.topClient}, avgBw=${BANDWIDTH[s.avgBandwidth]?.label}`
+        ? `${MONTHS_SHORT[i]}: submitted=${s.daysSubmitted}, tasks=${s.totalTasks}, blockers=${s.totalBlockers}, topProject=${Object.entries(s.tasksByProject||{}).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"}, topClient=${s.topClient}, avgBw=${BANDWIDTH[s.avgBandwidth]?.label}`
         : `${MONTHS_SHORT[i]}: no data`
       ).join("\n");
 
@@ -84,13 +84,14 @@ Reply ONLY with this exact JSON (no markdown):
 
   const exportCSV = () => {
     if (!monthlySums.length) return;
-    const rows = [["Month","Days Submitted","Tasks Completed","Blockers","Top Client","Avg Bandwidth"]];
+    const rows = [["Month","Days Submitted","Tasks Completed","Blockers","Top Project","Top Client","Avg Bandwidth"]];
     monthlySums.forEach((s, i) => {
       rows.push([
         `${MONTHS[i]} ${selectedYear}`,
         s?.daysSubmitted || 0,
         s?.totalTasks || 0,
         s?.totalBlockers || 0,
+        Object.entries(s?.tasksByProject||{}).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—",
         s?.topClient || "—",
         s ? BANDWIDTH[s.avgBandwidth]?.label || "—" : "—"
       ]);
@@ -151,13 +152,14 @@ Reply ONLY with this exact JSON (no markdown):
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{selectedMember}</div>
                 <div className="flex gap-8 flex-wrap">
                   <span className="badge badge-green">Active</span>
-                  {sortedClients[0] && <span className="badge badge-blue">Primary: {sortedClients[0][0]}</span>}
+                  {sortedProjects[0] && <span className="badge badge-blue">Top project: {sortedProjects[0][0]}</span>}
+              {sortedClients[0] && <span className="badge badge-accent" style={{ marginLeft: 4 }}>Top client: {sortedClients[0][0]}</span>}
                 </div>
               </div>
               {[
                 { val: `${submissionRate}%`, label: "Submission rate", sub: `${annualData.totalDaysSubmitted} of ~240 days`, color: "var(--accent)" },
                 { val: annualData.totalTasks,    label: "Total tasks",       sub: "across 12 months",          color: "var(--green)" },
-                { val: sortedClients.length,     label: "Clients served",    sub: sortedClients.map(([c])=>c).join(", ").slice(0,30), color: "var(--amber)" },
+                { val: sortedProjects.length || sortedClients.length, label: "Projects served", sub: (sortedProjects.length ? sortedProjects : sortedClients).map(([c])=>c).join(", ").slice(0,30), color: "var(--amber)" },
                 { val: annualData.totalBlockers, label: "Blockers raised",   sub: "tracked this year",          color: "var(--red)" },
               ].map((s, i) => (
                 <div key={i} style={{ textAlign: "center", padding: "0 20px", borderLeft: "0.5px solid var(--border)" }}>
@@ -204,6 +206,25 @@ Reply ONLY with this exact JSON (no markdown):
           </div>
 
           <div className="form-grid-2 mb-12">
+            {/* Project distribution */}
+            {sortedProjects.length > 0 && (
+              <div className="card" style={{ marginBottom: 0 }}>
+                <div className="card-header"><span className="card-title">Project distribution</span><span className="card-meta">Full year</span></div>
+                <div className="card-body">
+                  {sortedProjects.map(([proj, count]) => (
+                    <div key={proj} style={{ marginBottom: 10 }}>
+                      <div className="flex justify-between mb-4">
+                        <span className="text-sm font-medium">{proj}</span>
+                        <span className="text-xs text-muted">{count} tasks · {annualData.totalTasks ? Math.round(count/annualData.totalTasks*100) : 0}%</span>
+                      </div>
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${annualData.totalTasks ? count/annualData.totalTasks*100 : 0}%`, background: "var(--accent)" }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Client distribution */}
             <div className="card" style={{ marginBottom: 0 }}>
               <div className="card-header"><span className="card-title">Client distribution</span><span className="card-meta">Full year</span></div>
@@ -215,7 +236,7 @@ Reply ONLY with this exact JSON (no markdown):
                       <span className="text-xs text-muted">{count} tasks · {Math.round((count/annualData.totalTasks)*100)}%</span>
                     </div>
                     <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${(count/annualData.totalTasks)*100}%`, background: client.toLowerCase().includes("internal") ? "var(--faint)" : client.toLowerCase().includes("b") ? "var(--amber)" : "var(--blue)" }} />
+                      <div className="progress-fill" style={{ width: `${(count/annualData.totalTasks)*100}%`, background: client.toLowerCase().includes("internal") ? "var(--faint)" : "var(--blue)" }} />
                     </div>
                   </div>
                 ))}

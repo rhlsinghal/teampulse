@@ -46,7 +46,7 @@ export default function MonthlyReports({ members }) {
     const rows = [["Date","Client","Task","Status","Bandwidth","Blockers"]];
     entries.forEach(e => {
       (e.tasks || []).forEach(t => {
-        rows.push([e.date, t.client || "Internal", t.text, t.status, BANDWIDTH[e.bandwidth]?.label || "", e.blockers || ""]);
+        rows.push([e.date, t.project || "—", t.client || "Internal", t.text, t.status, BANDWIDTH[e.bandwidth]?.label || "", e.blockers || ""]);
       });
     });
     const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
@@ -240,7 +240,8 @@ Reply ONLY with this exact JSON (no markdown):
                   (e.tasks || []).filter(t => t.text?.trim()).map((t, ti) => (
                     <tr key={`${e.date}-${ti}`}>
                       <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--muted)" }}>{fmt(e.date)}</td>
-                      <td><ClientBadge client={t.client} /></td>
+                      <td style={{ fontSize:11,color:t.project?"var(--muted)":"var(--faint)" }}>{t.project||"—"}</td>
+                    <td><ClientBadge project={t.project} client={t.client} /></td>
                       <td className="text-sm">{t.text}</td>
                       <td><StatusBadge status={t.status} /></td>
                     </tr>

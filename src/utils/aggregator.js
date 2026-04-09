@@ -8,6 +8,7 @@ export function normaliseEntry(entry) {
   const eodTasks = entry.eod?.tasks || [];
   const tasks = eodTasks.length
     ? eodTasks.map((t, i) => ({
+        project:       t.project       || sodTasks[i]?.project || "",
         client:        t.client        || "",
         text:          t.text          || "",
         priority:      sodTasks[i]?.priority || t.priority || "Medium",
@@ -27,6 +28,8 @@ export function normaliseEntry(entry) {
               : "In Progress",
       }))
     : sodTasks.map(t => ({
+        project:       t.project       || sodTasks[i]?.project || "",
+        project:       t.project       || "",
         client:        t.client        || "",
         text:          t.text          || "",
         priority:      t.priority      || "Medium",
@@ -65,6 +68,7 @@ export async function aggregateMonth(memberName, monthKey, entries) {
   if (!monthEntries.length) return;
 
   const tasksByClient   = {};
+  const tasksByProject  = {};
   const tasksByStatus   = { "In Progress": 0, "Done": 0, "Blocked": 0, "Pending": 0 };
   const tasksByPriority = { "High": 0, "Medium": 0, "Low": 0 };
   let totalTasks    = 0;
@@ -81,8 +85,10 @@ export async function aggregateMonth(memberName, monthKey, entries) {
     (entry.tasks || []).forEach(t => {
       if (!t.text?.trim()) return;
       totalTasks++;
-      const client = t.client || "Internal";
-      tasksByClient[client] = (tasksByClient[client] || 0) + 1;
+      const client  = t.client  || "Internal";
+      const project = t.project || "—";
+      tasksByClient[client]   = (tasksByClient[client]   || 0) + 1;
+      tasksByProject[project] = (tasksByProject[project] || 0) + 1;
       if (tasksByStatus[t.status] !== undefined) tasksByStatus[t.status]++;
       const pri = t.priority || "Medium";
       if (tasksByPriority[pri] !== undefined) tasksByPriority[pri]++;
@@ -102,6 +108,7 @@ export async function aggregateMonth(memberName, monthKey, entries) {
     totalTasks,
     totalBlockers,
     tasksByClient,
+    tasksByProject,
     tasksByStatus,
     avgBandwidth:   avgBw,
     topClient,
@@ -132,7 +139,8 @@ export function buildAnnualSummary(monthlySummaries) {
     totalDaysSubmitted: 0,
     totalTasks: 0,
     totalBlockers: 0,
-    tasksByClient: {},
+    tasksByClient:  {},
+    tasksByProject: {},
     tasksByStatus: { "In Progress": 0, "Done": 0, "Blocked": 0, "Pending": 0 },
     monthlyBreakdown: [],
     avgBandwidthPerMonth: [],
@@ -146,8 +154,11 @@ export function buildAnnualSummary(monthlySummaries) {
     result.monthlyBreakdown.push(s);
     result.avgBandwidthPerMonth.push(s.avgBandwidth || 0);
 
-    Object.entries(s.tasksByClient || {}).forEach(([c, n]) => {
-      result.tasksByClient[c] = (result.tasksByClient[c] || 0) + n;
+    Object.entries(s.tasksByClient  || {}).forEach(([c, n]) => {
+      result.tasksByClient[c]  = (result.tasksByClient[c]  || 0) + n;
+    });
+    Object.entries(s.tasksByProject || {}).forEach(([p, n]) => {
+      result.tasksByProject[p] = (result.tasksByProject[p] || 0) + n;
     });
     Object.entries(s.tasksByStatus || {}).forEach(([st, n]) => {
       if (result.tasksByStatus[st] !== undefined) result.tasksByStatus[st] += n;

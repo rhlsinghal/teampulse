@@ -16,7 +16,7 @@ const DAYS_OF_WEEK = [
 ];
 
 const emptyForm = () => ({
-  client: "", text: "", priority: "Medium",
+  project: "", client: "", text: "", priority: "Medium",
   schedule: "daily", days: [1,2,3,4,5],
   dayOfMonth: 1, active: true,
 });
@@ -122,6 +122,12 @@ function TaskModal({ initial, onSave, onClose }) {
           </div>
           {/* Client + Priority */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <div className="field-label mb-6">Project</div>
+              <input className="field-input" placeholder="e.g. PS70"
+                value={form.project || ""} onChange={e => setForm(f => ({ ...f, project: e.target.value }))}
+                style={{ marginBottom: 0 }} />
+            </div>
             <div>
               <div className="field-label mb-6">Client</div>
               <input className="field-input" placeholder="e.g. WM"
