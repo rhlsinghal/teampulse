@@ -279,93 +279,154 @@ export default function SprintReport() {
   // ── Export Excel ────────────────────────────────────────────────────────────
   const exportExcel = () => {
     if (!rawData) return;
+    const XLSX = window.XLSX;
+    if (!XLSX) { alert("Excel library not loaded — please wait a moment and try again."); return; }
 
     const fmtDate = (ts) => {
       if (!ts) return "";
       const d = new Date(typeof ts === "number" ? ts : parseInt(ts));
-      return isNaN(d) ? "" : d.toLocaleDateString("en-GB");
+      return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-GB");
     };
-    const fmtAssignees = (arr) => (arr || []).map(a => a.username || a.email || "").filter(Boolean).join(", ");
-
-    const XLSX = window.XLSX;
-    if (!XLSX) { alert("Excel library not loaded — please try again in a moment."); return; }
+    const fmtAssignees = (arr) =>
+      (arr || []).map(a => a.username || a.email || "").filter(Boolean).join(", ");
 
     const wb = XLSX.utils.book_new();
 
-    // ── Summary sheet ──────────────────────────────────────────────────────
-    const summaryRows = [
-      ["iDerive DT Monthly Report — Raw Data Export"],
-      ["Report", meta?.label || ""],
-      ["Sprints", (rawData.sprints || []).map(s => s.label).join(", ")],
-      ["Generated", new Date().toLocaleString("en-GB")],
-      [],
-      ["Sprint", "Total DT Tasks", "Done", "Open", "Blocked", "Sprint Start", "Sprint End"],
+    // ── Sheet 1: All Sprint Tasks (every task, every sprint, all details) ─────
+    const taskHeader = [
+      "Sprint", "Sprint Start", "Sprint End",
+      "Task ID", "Task Name", "Status", "Task Type",
+      "Assignees", "Watchers",
+      "Due Date", "Date Closed", "Date Updated",
+      "ClickUp URL",
     ];
-    (rawData.sprints || []).forEach(s => {
-      summaryRows.push([
-        s.label,
-        s.dt_tasks.length,
-        s.done_dt.length,
-        s.open_dt.length,
-        s.blocked_dt.length,
-        s.startDate,
-        s.dueDate,
-      ]);
-    });
-    summaryRows.push([], ["Total Bugs", (rawData.bugs || []).length]);
-    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-    wsSummary["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 30 }, { wch: 20 }];
-    XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+    const taskRows = [taskHeader];
 
-    // ── One sheet per sprint ───────────────────────────────────────────────
     (rawData.sprints || []).forEach(s => {
-      const header = ["Task ID", "Task Name", "Status", "Assignees", "Due Date", "Date Closed", "Date Updated", "URL"];
-      const rows   = [header];
-      (s.dt_tasks || []).forEach(t => {
-        rows.push([
+      const allTasks = s.dt_tasks || [];
+      const doneIds    = new Set((s.done_dt    || []).map(t => t.id));
+      const openIds    = new Set((s.open_dt    || []).map(t => t.id));
+      const blockedIds = new Set((s.blocked_dt || []).map(t => t.id));
+
+      allTasks.forEach(t => {
+        const taskType = blockedIds.has(t.id) ? "Blocked"
+          : doneIds.has(t.id)    ? "Completed"
+          : openIds.has(t.id)    ? "Carry-over / Still Open"
+          : "In Progress";
+
+        taskRows.push([
+          s.label,
+          s.startDate,
+          s.dueDate,
           t.customId || t.id || "",
           t.name || "",
           t.status || "",
+          taskType,
           fmtAssignees(t.assignees),
+          fmtAssignees(t.watchers),
           fmtDate(t.dueDate),
           fmtDate(t.dateClosed),
           fmtDate(t.dateUpdated),
           t.url || "",
         ]);
       });
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = [
-        { wch: 14 }, { wch: 45 }, { wch: 18 }, { wch: 25 },
-        { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 40 },
-      ];
-      // Safe sheet name (max 31 chars, no special chars)
-      const sheetName = (s.label || `Sprint ${s.num}`).replace(/[\/*?:\[\]]/g, "").slice(0, 31);
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+      // Add deploy task as a separate row if it exists and isn't already in dt_tasks
+      const deployTask = s.next_sprint_deploy_task;
+      if (deployTask && !allTasks.find(t => t.id === deployTask.id)) {
+        taskRows.push([
+          s.label, s.startDate, s.dueDate,
+          deployTask.customId || deployTask.id || "",
+          deployTask.name || "",
+          deployTask.status || "",
+          "Deploy Task",
+          fmtAssignees(deployTask.assignees),
+          fmtAssignees(deployTask.watchers),
+          fmtDate(deployTask.dueDate),
+          fmtDate(deployTask.dateClosed),
+          fmtDate(deployTask.dateUpdated),
+          deployTask.url || "",
+        ]);
+      }
     });
 
-    // ── Bugs sheet ─────────────────────────────────────────────────────────
-    if ((rawData.bugs || []).length > 0) {
-      const bugHeader = ["Task ID", "Task Name", "Status", "Assignees", "Watchers", "Due Date", "Date Closed", "URL"];
-      const bugRows   = [bugHeader];
-      rawData.bugs.forEach(t => {
-        bugRows.push([
-          t.customId || t.id || "",
-          t.name || "",
-          t.status || "",
-          fmtAssignees(t.assignees),
-          fmtAssignees(t.watchers),
-          fmtDate(t.dueDate),
-          fmtDate(t.dateClosed),
-          t.url || "",
-        ]);
-      });
+    const wsAllTasks = XLSX.utils.aoa_to_sheet(taskRows);
+    wsAllTasks["!cols"] = [
+      { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 14 }, { wch: 50 }, { wch: 20 }, { wch: 24 },
+      { wch: 25 }, { wch: 25 },
+      { wch: 12 }, { wch: 14 }, { wch: 14 },
+      { wch: 40 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsAllTasks, "All Sprint Tasks");
+
+    // ── Sheet 2: Bugs (full details) ──────────────────────────────────────────
+    const bugHeader = [
+      "Task ID", "Bug Name", "Status",
+      "DT Assignees", "DT Watchers",
+      "Due Date", "Date Closed", "Date Updated",
+      "ClickUp URL",
+    ];
+    const bugRows = [bugHeader];
+
+    (rawData.bugs || []).forEach(b => {
+      const cleanName = (b.name || "").replace(/BUG:\s*/i, "");
+      bugRows.push([
+        b.customId || b.id || "",
+        cleanName,
+        b.status || "",
+        fmtAssignees(b.assignees),
+        fmtAssignees(b.watchers),
+        fmtDate(b.dueDate),
+        fmtDate(b.dateClosed),
+        fmtDate(b.dateUpdated),
+        b.url || "",
+      ]);
+    });
+
+    if (bugRows.length > 1) {
       const wsBugs = XLSX.utils.aoa_to_sheet(bugRows);
       wsBugs["!cols"] = [
-        { wch: 14 }, { wch: 45 }, { wch: 18 }, { wch: 25 },
-        { wch: 25 }, { wch: 12 }, { wch: 14 }, { wch: 40 },
+        { wch: 14 }, { wch: 50 }, { wch: 20 },
+        { wch: 25 }, { wch: 25 },
+        { wch: 12 }, { wch: 14 }, { wch: 14 },
+        { wch: 40 },
       ];
       XLSX.utils.book_append_sheet(wb, wsBugs, "Bugs");
     }
+
+    // ── Sheet 3: Sprint Summary ───────────────────────────────────────────────
+    const summaryHeader = [
+      "Sprint", "Sprint Start", "Sprint End",
+      "Total DT Tasks", "Completed", "Still Open", "Blocked",
+      "Completion %",
+    ];
+    const summaryRows = [summaryHeader];
+    (rawData.sprints || []).forEach(s => {
+      const total = (s.dt_tasks || []).length;
+      const done  = (s.done_dt  || []).length;
+      const open  = (s.open_dt  || []).length;
+      const blk   = (s.blocked_dt || []).length;
+      const pct   = total ? `${Math.round(done / total * 100)}%` : "—";
+      summaryRows.push([s.label, s.startDate, s.dueDate, total, done, open, blk, pct]);
+    });
+    // Totals row
+    const totalTasks = (rawData.sprints || []).reduce((a, s) => a + (s.dt_tasks||[]).length, 0);
+    const totalDone  = (rawData.sprints || []).reduce((a, s) => a + (s.done_dt ||[]).length, 0);
+    summaryRows.push([
+      "TOTAL", "", "",
+      totalTasks, totalDone, "", "",
+      totalTasks ? `${Math.round(totalDone / totalTasks * 100)}%` : "—",
+    ]);
+    summaryRows.push([]);
+    summaryRows.push(["Total Bugs", (rawData.bugs || []).length]);
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary["!cols"] = [
+      { wch: 14 }, { wch: 12 }, { wch: 12 },
+      { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Sprint Summary");
 
     const filename = `iDerive_Report_${(meta?.label || "report").replace(/\s+/g, "_")}.xlsx`;
     XLSX.writeFile(wb, filename);
