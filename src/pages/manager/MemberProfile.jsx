@@ -102,14 +102,16 @@ function TodaySection({ entry }) {
   const displayTasks = eod?.submittedAt
     ? eodTasks.map((t, i) => ({
         ...t,
-        priority:  t.priority  || sodTasks[i]?.priority  || "Medium",
-        startDate: t.startDate || sodTasks[i]?.startDate || "",
-        dueDate:   t.dueDate   || sodTasks[i]?.dueDate   || "",
+        priority:    t.priority    || sodTasks[i]?.priority    || "Medium",
+        startDate:   t.startDate   || sodTasks[i]?.startDate   || "",
+        dueDate:     t.dueDate     || sodTasks[i]?.dueDate     || "",
+        isRecurring: sodTasks[i]?.isRecurring === true,
       }))
     : sodTasks;
-  const valid     = displayTasks.filter(t => t.text?.trim());
-  const done      = valid.filter(t => t.outcome === "Done").length;
-  const pct       = eod?.submittedAt && valid.length ? Math.round(done / valid.length * 100) : null;
+  const valid        = displayTasks.filter(t => t.text?.trim());
+  const projectValid = valid.filter(t => !t.isRecurring);
+  const done         = projectValid.filter(t => t.outcome === "Done").length;
+  const pct          = eod?.submittedAt && projectValid.length ? Math.round(done / projectValid.length * 100) : null;
   const carryOvers = eodTasks.filter(t => t.outcome === "Carry over" && t.notes?.trim());
   const blockerDetails = eodTasks.filter(t => t.outcome === "Blocked" && t.blockerDetail?.trim());
 
@@ -155,6 +157,11 @@ function TodaySection({ entry }) {
                     <td><ClientPill client={t.client} /></td>
                     <td><PriorityPill priority={t.priority} /></td>
                     <td style={{ fontSize: 12, fontWeight: 500 }}>
+                      {t.isRecurring && (
+                        <span style={{ fontSize: 9, marginRight: 5, padding: "1px 5px", borderRadius: 10,
+                          background: "#EEEDFE", color: "#534AB7", border: "0.5px solid #AFA9EC",
+                          fontWeight: 500 }}>↻</span>
+                      )}
                       {t.text}
                       {t.adhoc && <span style={{ fontSize: 9, marginLeft: 5, padding: "1px 4px", borderRadius: 8,
                         background: "#fffbeb", color: "#854F0B", border: "0.5px solid #FAC775" }}>ad-hoc</span>}
@@ -207,7 +214,7 @@ function TodaySection({ entry }) {
 // ── Stats card (month or YTD) ─────────────────────────────────────────────────
 function StatsCard({ label, sublabel, entries, allTasks }) {
   const normed   = entries.map(normaliseEntry);
-  const tasks    = normed.flatMap(e => e.tasks || []).filter(t => t.text?.trim());
+  const tasks    = normed.flatMap(e => e.tasks || []).filter(t => t.text?.trim() && !t.isRecurring);
   const done     = tasks.filter(t => t.status === "Done" || t.outcome === "Done").length;
   const blocked  = normed.filter(e => e.blockers?.trim()).length;
   const bwVals   = normed.map(e => e.bandwidth).filter(Boolean);
@@ -603,7 +610,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
 
   // Shared normalised tasks for stats
   const normed    = entries.map(normaliseEntry);
-  const allTasks  = normed.flatMap(e => e.tasks || []).filter(t => t.text?.trim());
+  const allTasks  = normed.flatMap(e => e.tasks || []).filter(t => t.text?.trim() && !t.isRecurring);
   const monthEntries = entries.filter(e => e.date?.startsWith(monthKey));
 
   // Header stats

@@ -27,19 +27,23 @@ function fmtTime(ts) {
 // ── Task chip ─────────────────────────────────────────────────────────────────
 function TaskChip({ task }) {
   const { bg, bd, dot, text } = chipStyle(task.outcome);
-  const isBlocked = task.outcome === "Blocked";
+  const isBlocked   = task.outcome === "Blocked";
+  const isRecurring = task.isRecurring === true;
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 4,
-      background: bg, border: `0.5px solid ${bd}`,
+      background: isRecurring ? "#EEEDFE20" : bg,
+      border: `0.5px solid ${isRecurring ? "#AFA9EC" : bd}`,
       borderRadius: 6, padding: "3px 8px", flexShrink: 0,
     }}>
-      <div style={{ width: 5, height: 5, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+      {isRecurring
+        ? <span style={{ fontSize: 9, color: "#534AB7", flexShrink: 0 }}>↻</span>
+        : <div style={{ width: 5, height: 5, borderRadius: "50%", background: dot, flexShrink: 0 }} />}
       {task.client && (
-        <span style={{ fontSize: 10, color: text, fontWeight: 500, whiteSpace: "nowrap" }}>{task.client}</span>
+        <span style={{ fontSize: 10, color: isRecurring ? "#534AB7" : text, fontWeight: 500, whiteSpace: "nowrap" }}>{task.client}</span>
       )}
       <span style={{
-        fontSize: 10, color: text, whiteSpace: "nowrap",
+        fontSize: 10, color: isRecurring ? "#534AB7" : text, whiteSpace: "nowrap",
         maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis",
       }}>
         {task.text}{isBlocked ? " ⚑" : ""}
@@ -66,16 +70,19 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
   // Build display tasks with outcome from EOD merged in
   const displayTasks = eodSubmitted
     ? eodTasks.map((t, i) => ({
-        client:  t.client  || sodTasks[i]?.client  || "",
-        text:    t.text    || sodTasks[i]?.text     || "",
-        priority: t.priority || sodTasks[i]?.priority || "Medium",
-        outcome: t.outcome,
+        client:     t.client     || sodTasks[i]?.client     || "",
+        text:       t.text       || sodTasks[i]?.text       || "",
+        priority:   t.priority   || sodTasks[i]?.priority   || "Medium",
+        outcome:    t.outcome,
+        isRecurring: sodTasks[i]?.isRecurring === true,
       }))
-    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", priority: t.priority || "Medium", outcome: null }));
+    : sodTasks.map(t => ({ client: t.client || "", text: t.text || "", priority: t.priority || "Medium", outcome: null, isRecurring: t.isRecurring === true }));
 
   const valid      = displayTasks.filter(t => t.text?.trim());
-  const total      = valid.length;
-  const done       = valid.filter(t => t.outcome === "Done").length;
+  // Exclude recurring tasks from done% — they are ops tasks, not project completion
+  const projectValid = valid.filter(t => !t.isRecurring);
+  const total      = projectValid.length;
+  const done       = projectValid.filter(t => t.outcome === "Done").length;
   const blocked    = valid.filter(t => t.outcome === "Blocked").length;
   const hasBlocker = blocked > 0 || sodTasks.some(t => t.blocker?.trim());
   const pct        = eodSubmitted && total ? Math.round(done / total * 100) : null;
@@ -169,7 +176,7 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
         ) : hasToday && total > 0 ? (
           <>
             <div style={{ fontSize: 12, fontWeight: 500, color: "var(--blue)", lineHeight: 1 }}>{total}</div>
-            <div style={{ fontSize: 9, color: "var(--faint)" }}>planned</div>
+            <div style={{ fontSize: 9, color: "var(--faint)" }}>project</div>
           </>
         ) : hasToday ? (
           <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>
