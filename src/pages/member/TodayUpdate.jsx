@@ -142,7 +142,7 @@ export default function TodayUpdate({ memberName }) {
       if (!toAdd.length) return f;
       const recurringTasks = toAdd.map(r => ({
         client: r.client || "", text: r.text || "", blocker: "",
-        priority: r.priority || "Medium", startDate: "", dueDate: "",
+        priority: r.priority || "Medium", startDate: TODAY, dueDate: TODAY,
         isRecurring: true, recurringId: r.id,
       }));
       const realTasks = f.tasks.filter(t => t.text?.trim());
