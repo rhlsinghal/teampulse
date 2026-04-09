@@ -7,10 +7,13 @@ function TokenSection({ settings, onSave, onRevoke, saving }) {
   const [visible, setVisible] = useState(false);
   const [saved,   setSaved]   = useState(false);
 
+  const [error, setError] = useState("");
   const handleSave = async () => {
     if (!input.trim()) return;
+    setError("");
     const ok = await onSave(input.trim());
     if (ok) { setInput(""); setSaved(true); setTimeout(() => setSaved(false), 3000); }
+    else { setError("Failed to save — check browser console and Firestore rules for the slackSettings collection."); }
   };
 
   return (
@@ -49,6 +52,28 @@ function TokenSection({ settings, onSave, onRevoke, saving }) {
           ))}
         </div>
 
+        {/* Existing token indicator */}
+        {settings?.tokenSaved && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+            background: "var(--green-bg)", border: "0.5px solid var(--green-bd)",
+            borderRadius: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 13 }}>🔑</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: "var(--green)" }}>Token configured</div>
+              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                color: "var(--muted)", marginTop: 2, letterSpacing: "0.1em" }}>
+                xoxp-••••••••••••••••••••••••••••••••••••••••
+              </div>
+            </div>
+            {settings?.tokenSavedAt && (
+              <div style={{ fontSize: 10, color: "var(--faint)", textAlign: "right", whiteSpace: "nowrap" }}>
+                Saved<br />
+                {new Date(settings.tokenSavedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ flex: 1, position: "relative", minWidth: 260 }}>
             <input
@@ -77,10 +102,15 @@ function TokenSection({ settings, onSave, onRevoke, saving }) {
             </button>
           )}
         </div>
-        {settings?.tokenSaved && settings?.tokenSavedAt && (
+        {error && (
+          <div style={{ fontSize: 11, color: "var(--red)", marginTop: 8, padding: "6px 10px",
+            background: "var(--red-bg)", borderRadius: 6, border: "0.5px solid var(--red-bd)" }}>
+            {error}
+          </div>
+        )}
+        {settings?.tokenSaved && (
           <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8 }}>
-            Last updated: {new Date(settings.tokenSavedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-            {" · "}Token is stored securely and never shown again
+            Token is stored securely and never shown again · To replace, paste a new token above
           </div>
         )}
         {!settings?.tokenSaved && (
