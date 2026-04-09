@@ -2,7 +2,7 @@
 // Manages reading/writing Slack settings for the current member.
 // Token is write-only from the frontend — never read back after saving.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { db } from "../firebase";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { TODAY } from "../utils/dates";
@@ -18,6 +18,8 @@ export function useSlack(memberName) {
   const [loading,  setLoading]  = useState(false);
   const [saving,   setSaving]   = useState(false);
 
+  const tokenRef = useRef(null); // holds token in memory only, not in state
+
   const load = useCallback(async () => {
     if (!memberName) return;
     setLoading(true);
@@ -25,7 +27,7 @@ export function useSlack(memberName) {
       const snap = await getDoc(doc(db, "slackSettings", memberName));
       if (snap.exists()) {
         const d = snap.data();
-        // Never expose the token — strip it before storing in state
+        tokenRef.current = d.token || null; // keep token in ref, not state
         const { token: _omit, ...safe } = d;
         setSettings(safe);
       } else {
@@ -51,6 +53,7 @@ export function useSlack(memberName) {
         tokenSaved:   true,
         tokenSavedAt: Date.now(),
       });
+      tokenRef.current = token.trim(); // update in-memory ref
       setSettings(s => ({ ...s, tokenSaved: true, tokenSavedAt: Date.now() }));
       setSaving(false);
       return true;
@@ -62,6 +65,7 @@ export function useSlack(memberName) {
     if (!memberName) return;
     const ref = doc(db, "slackSettings", memberName);
     await updateDoc(ref, { token: "", tokenSaved: false, tokenSavedAt: null });
+    tokenRef.current = null;
     setSettings(s => ({ ...s, tokenSaved: false, tokenSavedAt: null }));
   };
 
@@ -86,13 +90,16 @@ export function useSlack(memberName) {
     setSettings(s => ({ ...s, prefs }));
   };
 
-  // Post a message via the API (token fetched server-side)
+  // Post a message via the API — passes token from in-memory ref
   const postMessage = async (channelId, text, blocks) => {
+    const token = tokenRef.current;
+    if (!token) throw new Error("No Slack token configured — please save your token in Slack Settings.");
     const res  = await fetch(SLACK_POST_URL, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ memberName, channelId, text, blocks }),
+      body:    JSON.stringify({ token, channelId, text, blocks }),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || "Failed to post to Slack");
     return data;
