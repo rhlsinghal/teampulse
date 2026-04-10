@@ -198,70 +198,66 @@ export default function TodayUpdate({ memberName }) {
     const eodTasks = eodData?.tasks || [];
     const tasks    = isSod ? sodTasks : eodTasks;
 
-    const fmtShort = (iso) => {
+    // Date header: DD-MM-YYYY
+    const now     = new Date();
+    const dd      = String(now.getDate()).padStart(2, "0");
+    const mm      = String(now.getMonth() + 1).padStart(2, "0");
+    const yyyy    = now.getFullYear();
+    const dateStr = `${dd}-${mm}-${yyyy}`;
+
+    // Full date formatter: "06 Apr 2026"
+    const fmtDate = (iso) => {
       if (!iso) return null;
       const d = new Date(iso + "T00:00:00");
-      return isNaN(d.getTime()) ? null : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+      return isNaN(d.getTime()) ? null : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
     };
 
-    const dayStr = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
-    const header = isSod
-      ? `:clipboard: *Morning Updates* | ${dayStr}`
-      : `:bar_chart: *Evening Updates* | ${dayStr}`;
-
-    const lines = [""];
+    const header = `Date: ${dateStr} || ${isSod ? "Morning Updates" : "Evening Updates"}`;
+    const lines  = [];
 
     tasks.filter(t => t.text?.trim()).forEach((t, i) => {
       const client   = t.client?.trim() || "Internal";
-      const taskLine = `${i + 1}. *${client}* | ${t.text}`;
-      const meta     = [];
+      lines.push(`${i + 1}. ${client} | ${t.text}`);
 
       if (isSod) {
-        const s = fmtShort(t.startDate);
-        const d = fmtShort(t.dueDate);
-        if (s) meta.push(`Start: ${s}`);
-        if (d) meta.push(`Due: ${d}`);
-        meta.push("In Progress");
-        if (t.blocker?.trim()) meta.push(`:warning: _${t.blocker}_`);
+        const s = fmtDate(t.startDate);
+        const d = fmtDate(t.dueDate);
+        if (s || d) {
+          const parts = [];
+          if (s) parts.push(`Start: ${s}`);
+          if (d) parts.push(`Due: ${d}`);
+          lines.push(`   ${parts.join("  |  ")}`);
+        }
       } else {
         const sodTask = sodTasks[i] || {};
-        const s = fmtShort(t.startDate || sodTask.startDate);
-        const d = fmtShort(t.dueDate   || sodTask.dueDate);
-        if (s) meta.push(`Start: ${s}`);
-        if (d) meta.push(`Due: ${d}`);
+        const s = fmtDate(t.startDate || sodTask.startDate);
+        const d = fmtDate(t.dueDate   || sodTask.dueDate);
+        if (s || d) {
+          const parts = [];
+          if (s) parts.push(`Start: ${s}`);
+          if (d) parts.push(`Due: ${d}`);
+          lines.push(`   ${parts.join("  |  ")}`);
+        }
         if (t.outcome === "Done") {
-          meta.push(":white_check_mark: Done");
+          lines.push(`   Outcome: Done`);
         } else if (t.outcome === "Carry over") {
-          const note = t.notes?.trim() ? ` _(${t.notes})_` : " _(will continue tomorrow)_";
-          meta.push(`:arrows_counterclockwise: Carry over${note}`);
+          const note = t.notes?.trim() ? `  |  Note: ${t.notes}` : "";
+          lines.push(`   Outcome: Carry over${note}`);
         } else if (t.outcome === "Blocked") {
-          meta.push(":octagonal_sign: Blocked");
-          if (t.blockerDetail?.trim()) meta.push(`_(${t.blockerDetail})_`);
-          if (t.blockerOwner?.trim())  meta.push(`Owner: ${t.blockerOwner}`);
-        } else {
-          meta.push("In Progress");
+          const parts = ["Outcome: Blocked"];
+          if (t.blockerDetail?.trim()) parts.push(`Blocker: ${t.blockerDetail}`);
+          if (t.blockerOwner?.trim())  parts.push(`Owner: ${t.blockerOwner}`);
+          lines.push(`   ${parts.join("  |  ")}`);
         }
       }
-
-      lines.push(taskLine);
-      lines.push(`   ${meta.join(" · ")}`);
     });
 
-    const blockerCount = isSod
-      ? tasks.filter(t => t.blocker?.trim()).length
-      : tasks.filter(t => t.outcome === "Blocked").length;
-
-    lines.push("");
-    lines.push(blockerCount > 0
-      ? `:warning: ${blockerCount} blocker${blockerCount !== 1 ? "s" : ""} open`
-      : ":white_check_mark: No blockers");
-
-    const fullText = [header, ...lines].join("\n");
+    const fullText = [header, "", ...lines].join("\n");
 
     return {
       text: fullText,
       blocks: [
-        { type: "section", text: { type: "mrkdwn", text: header } },
+        { type: "section", text: { type: "mrkdwn", text: `*${header}*` } },
         { type: "divider" },
         { type: "section", text: { type: "mrkdwn", text: lines.join("\n") || "—" } },
       ],
