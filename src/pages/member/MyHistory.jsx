@@ -553,6 +553,30 @@ export default function MyHistory({ memberName }) {
                 )}
               </div>
 
+              <div className="form-grid-2 mb-12">
+                <div className="card" style={{ marginBottom: 0 }}>
+                  <div className="card-header"><span className="card-title">Tasks by client</span></div>
+                  <div className="card-body">
+                    {Object.entries(summary.tasksByClient).sort((a,b) => b[1]-a[1]).map(([c, n]) => (
+                      <div key={c} style={{ marginBottom: 10 }}>
+                        <div className="flex justify-between mb-4"><span className="text-sm font-medium">{c}</span><span className="text-xs text-muted">{n} tasks · {Math.round(n/summary.totalTasks*100)}%</span></div>
+                        <div className="progress-bar"><div className="progress-fill" style={{ width: `${n/summary.totalTasks*100}%`, background: "var(--accent)" }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="card" style={{ marginBottom: 0 }}>
+                  <div className="card-header"><span className="card-title">Tasks by status</span></div>
+                  <div className="card-body">
+                    {Object.entries(summary.tasksByStatus).filter(([,v]) => v > 0).map(([s, n]) => (
+                      <div key={s} style={{ marginBottom: 10 }}>
+                        <div className="flex justify-between mb-4"><span className="text-sm font-medium">{s}</span><span className="text-xs text-muted">{n} tasks</span></div>
+                        <div className="progress-bar"><div className="progress-fill" style={{ width: `${summary.totalTasks ? n/summary.totalTasks*100 : 0}%`, background: s === "Done" ? "var(--green)" : s === "Blocked" ? "var(--red)" : "var(--blue)" }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
               {/* Recurring compliance card */}
               {summary.recurringTasks?.length > 0 && (
                 <div style={{ border: "0.5px solid var(--blue-bd)", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
@@ -593,30 +617,6 @@ export default function MyHistory({ memberName }) {
                   </div>
                 </div>
               )}
-              <div className="form-grid-2 mb-12">
-                <div className="card" style={{ marginBottom: 0 }}>
-                  <div className="card-header"><span className="card-title">Tasks by client</span></div>
-                  <div className="card-body">
-                    {Object.entries(summary.tasksByClient).sort((a,b) => b[1]-a[1]).map(([c, n]) => (
-                      <div key={c} style={{ marginBottom: 10 }}>
-                        <div className="flex justify-between mb-4"><span className="text-sm font-medium">{c}</span><span className="text-xs text-muted">{n} tasks · {Math.round(n/summary.totalTasks*100)}%</span></div>
-                        <div className="progress-bar"><div className="progress-fill" style={{ width: `${n/summary.totalTasks*100}%`, background: "var(--accent)" }} /></div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="card" style={{ marginBottom: 0 }}>
-                  <div className="card-header"><span className="card-title">Tasks by status</span></div>
-                  <div className="card-body">
-                    {Object.entries(summary.tasksByStatus).filter(([,v]) => v > 0).map(([s, n]) => (
-                      <div key={s} style={{ marginBottom: 10 }}>
-                        <div className="flex justify-between mb-4"><span className="text-sm font-medium">{s}</span><span className="text-xs text-muted">{n} tasks</span></div>
-                        <div className="progress-bar"><div className="progress-fill" style={{ width: `${summary.totalTasks ? n/summary.totalTasks*100 : 0}%`, background: s === "Done" ? "var(--green)" : s === "Blocked" ? "var(--red)" : "var(--blue)" }} /></div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
               {/* ── Carry-over section ── */}
               {(() => {
                 const allCO  = buildCarryOvers(summary.rawEntries || []);
