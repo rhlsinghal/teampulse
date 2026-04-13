@@ -50,35 +50,52 @@ function AgeBar({ startDate, dueDate, isDone }) {
 
 function buildCarryOvers(entries) {
   const taskMap = {};
+
   entries.forEach(e => {
     const eodTasks = e.eod?.tasks || [];
     const sodTasks = e.sod?.tasks || [];
+
     eodTasks.forEach((t, i) => {
       if (!t.text?.trim()) return;
       const sodTask = sodTasks[i] || {};
+      const origin  = sodTask.carryOverFrom || t.carryOverFrom || t.startDate || e.date;
+      const key     = `${t.client||""}|${t.text}|${origin}`;
       const isCarry = t.outcome === "Carry over" || t.outcome === "Blocked" || sodTask.isCarryOver === true;
-      if (!isCarry) return;
-      const origin = sodTask.carryOverFrom || t.carryOverFrom || t.startDate || e.date;
-      const key    = `${t.client||""}|${t.text}|${origin}`;
-      if (!taskMap[key]) {
+      const isDone  = t.outcome === "Done" && sodTask.isCarryOver === true;
+
+      // Create entry when first seen as a carry-over
+      if (isCarry && !taskMap[key]) {
         taskMap[key] = {
-          client: t.client||"", text: t.text||"",
-          priority:  t.priority  || sodTask.priority  || "Medium",
-          startDate: t.startDate || sodTask.startDate || origin,
-          dueDate:   t.dueDate   || sodTask.dueDate   || "",
-          endDate:   t.endDate   || "",
-          outcome:   t.outcome,
+          client:        t.client        || "",
+          text:          t.text          || "",
+          priority:      t.priority      || sodTask.priority  || "Medium",
+          startDate:     t.startDate     || sodTask.startDate || origin,
+          dueDate:       t.dueDate       || sodTask.dueDate   || "",
+          endDate:       "",
+          outcome:       t.outcome,
           blockerDetail: t.blockerDetail || "",
           blockerOwner:  t.blockerOwner  || "",
-          notes:     t.notes || "",
+          notes:         t.notes         || "",
         };
       }
-      if (taskMap[key] && t.outcome === "Done" && taskMap[key].outcome !== "Done") {
+
+      // Update existing entry with latest notes/blocker if still active
+      if (isCarry && taskMap[key] && taskMap[key].outcome !== "Done") {
+        taskMap[key].outcome       = t.outcome;
+        taskMap[key].notes         = t.notes         || taskMap[key].notes;
+        taskMap[key].blockerDetail = t.blockerDetail || taskMap[key].blockerDetail;
+        taskMap[key].blockerOwner  = t.blockerOwner  || taskMap[key].blockerOwner;
+        taskMap[key].dueDate       = t.dueDate       || sodTask.dueDate || taskMap[key].dueDate;
+      }
+
+      // Mark as resolved when the carried-over task is finally Done
+      if (isDone && taskMap[key] && taskMap[key].outcome !== "Done") {
         taskMap[key].outcome = "Done";
         taskMap[key].endDate = t.endDate || e.date;
       }
     });
   });
+
   return Object.values(taskMap);
 }
 
