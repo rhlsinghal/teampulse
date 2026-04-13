@@ -733,7 +733,7 @@ export default function MyHistory({ memberName }) {
               <div className="card">
                 <div className="card-header">
                   <span className="card-title">Task breakdown</span>
-                  <span className="card-meta">{summary.daysSubmitted} days · {summary.totalTasks} project tasks</span>
+                  <span className="card-meta">{summary.daysSubmitted} days submitted</span>
                 </div>
                 <table className="data-table">
                   <thead>
@@ -750,7 +750,7 @@ export default function MyHistory({ memberName }) {
                   </thead>
                   <tbody>
                     {summary.entries.flatMap((e, ei) =>
-                      (e.tasks||[]).filter(t => t.text?.trim() && !t.isCarryOver).map((t, ti) => {
+                      (e.tasks||[]).filter(t => t.text?.trim() && !t.isCarryOver && t.outcome !== "Carry over").map((t, ti) => {
                         const os = OUTCOME_STYLE[t.status]||OUTCOME_STYLE[t.outcome];
                         const ps = PRIORITY_STYLE[t.priority||"Medium"];
                         const overdue = t.dueDate && t.dueDate < TODAY && (t.status||t.outcome) !== "Done";

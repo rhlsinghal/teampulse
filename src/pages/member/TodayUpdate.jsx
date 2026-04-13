@@ -294,14 +294,21 @@ export default function TodayUpdate({ memberName }) {
 
     const handleSaveSOD = async () => {
     if (!sodForm.tasks.some(t => t.text.trim())) { showToast("Add at least one task", "error"); return; }
+    // Due date is mandatory for all non-recurring tasks
+    const missingDue = sodForm.tasks.find(t => t.text?.trim() && !t.isRecurring && !t.dueDate?.trim());
+    if (missingDue) { showToast("Please add a due date for all tasks", "error"); return; }
     const ok = await saveSOD({ ...sodForm, submittedAt: Date.now() });
     showToast(ok ? "SOD submitted ✓" : "Save failed — try again", ok ? "success" : "error");
   };
   const handleSaveEOD = async () => {
-    // Validate mandatory notes for carry-over and blocked tasks
+    // Validate EOD tasks
     for (const t of eodForm.tasks) {
-      if (t.outcome === "Carry over" && !t.notes?.trim()) {
-        showToast("Please add a reason for carry-over tasks", "error"); return;
+      // Carry over reason is mandatory only if past due date
+      if (t.outcome === "Carry over") {
+        const isOverdue = t.dueDate && t.dueDate < TODAY;
+        if (isOverdue && !t.notes?.trim()) {
+          showToast(`"${t.text.slice(0, 40)}" is past its due date — please add a reason for carry over`, "error"); return;
+        }
       }
       if (t.outcome === "Blocked" && !t.blockerDetail?.trim()) {
         showToast("Please describe the blocker for blocked tasks", "error"); return;
