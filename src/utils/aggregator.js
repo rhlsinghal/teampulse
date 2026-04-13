@@ -47,6 +47,7 @@ export function normaliseEntry(entry) {
   return {
     date:          entry.date,
     bandwidth:     entry.sod.bandwidth || 3,
+    eodMissing:    !entry.eod?.submittedAt,
     tasks,
     blockers,
     notCompleted:  entry.eod?.notCompleted  || "",

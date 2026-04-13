@@ -440,10 +440,13 @@ function buildSummary(entries, year, month) {
         if (t.status === "Done" || t.outcome === "Done") recurringMap[key].doneDays++;
         return; // exclude from project totals
       }
-      totalTasks++;
-      const cl = t.client || "Internal";
-      tasksByClient[cl] = (tasksByClient[cl] || 0) + 1;
-      if (tasksByStatus[t.status] !== undefined) tasksByStatus[t.status]++;
+      // Only count tasks toward stats when EOD was actually submitted
+      if (!e.eodMissing) {
+        totalTasks++;
+        const cl = t.client || "Internal";
+        tasksByClient[cl] = (tasksByClient[cl] || 0) + 1;
+        if (tasksByStatus[t.status] !== undefined) tasksByStatus[t.status]++;
+      }
     });
   });
   const avgBw = bwValues.length ? Math.round(bwValues.reduce((a, b) => a + b, 0) / bwValues.length) : 3;
@@ -461,6 +464,8 @@ export default function MyHistory({ memberName }) {
   const [selected,   setSelected]   = useState(TODAY);
   const [sumYear,    setSumYear]    = useState(now.getFullYear());
   const [sumMonth,   setSumMonth]   = useState(now.getMonth());
+  const [bdClientFilter, setBdClientFilter] = useState("all");
+  const [bdStatusFilter, setBdStatusFilter] = useState("all");
 
   const navigateCal = (dir) => {
     let m = calMonth + dir, y = calYear;
@@ -730,60 +735,97 @@ export default function MyHistory({ memberName }) {
               })()}
 
               {/* ── Task breakdown table ── */}
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Task breakdown</span>
-                  <span className="card-meta">{summary.daysSubmitted} days submitted</span>
-                </div>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width:88 }}>Date</th>
-                      <th style={{ width:85 }}>Client</th>
-                      <th style={{ width:75 }}>Priority</th>
-                      <th>Task</th>
-                      <th style={{ width:88 }}>Start</th>
-                      <th style={{ width:88 }}>Due</th>
-                      <th style={{ width:88 }}>End</th>
-                      <th style={{ width:95 }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.entries.flatMap((e, ei) =>
-                      (e.tasks||[]).filter(t => t.text?.trim() && !t.isCarryOver && t.outcome !== "Carry over").map((t, ti) => {
-                        const os = OUTCOME_STYLE[t.status]||OUTCOME_STYLE[t.outcome];
-                        const ps = PRIORITY_STYLE[t.priority||"Medium"];
-                        const overdue = t.dueDate && t.dueDate < TODAY && (t.status||t.outcome) !== "Done";
-                        return (
-                          <tr key={`${ei}-${ti}`} style={{ background: (summary.rawEntries?.[ei]?.sod?.tasks?.[ti]?.isRecurring) ? "#EEEDFE15" : "transparent" }}>
-                            <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{fmt(e.date)}</td>
-                            <td>{t.client ? <span className="badge badge-blue" style={{ fontSize:11 }}>{t.client}</span> : <span style={{ color:"var(--faint)" }}>—</span>}</td>
-                            <td><span style={{ fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:500,color:ps.color,background:ps.bg,border:`0.5px solid ${ps.bd}` }}>{t.priority||"Medium"}</span></td>
-                            <td className="text-sm">
-                              {summary.rawEntries?.[ei]?.sod?.tasks?.[ti]?.isRecurring && (
-                                <span style={{ fontSize:9, marginRight:5, padding:"1px 5px", borderRadius:10,
-                                  background:"#EEEDFE", color:"#534AB7", border:"0.5px solid #AFA9EC", fontWeight:500 }}>↻</span>
-                              )}
-                              {t.text}
-                            </td>
-                            <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{t.startDate||"—"}</td>
-                            <td>
-                              {t.dueDate
-                                ? <span style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:overdue?"var(--red)":"var(--muted)",fontWeight:overdue?500:400 }}>{t.dueDate}{overdue?" !":""}</span>
-                                : <span style={{ color:"var(--faint)",fontSize:11 }}>—</span>}
-                            </td>
-                            <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:t.endDate?"var(--green)":"var(--faint)" }}>{t.endDate||"—"}</td>
-                            <td>{os ? <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:os.bg,color:os.color,border:`0.5px solid ${os.bd}` }}>{t.status||t.outcome}</span> : <span style={{ fontSize:11,color:"var(--faint)" }}>{t.status||"—"}</span>}</td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-                <div style={{ padding:"7px 14px",fontSize:10,color:"var(--faint)",borderTop:"0.5px solid var(--border)" }}>
-                  Carry-over tasks are tracked separately above
-                </div>
-              </div>
+              {(() => {
+                // Build flat list for filters
+                const bdAllTasks = summary.entries.flatMap((e, ei) =>
+                  (e.tasks||[])
+                    .filter(t => t.text?.trim() && !t.isCarryOver && t.outcome !== "Carry over")
+                    .map((t, ti) => ({ ...t, _ei: ei, _ti: ti, _eodMissing: e.eodMissing }))
+                );
+                const bdClients  = ["all", ...new Set(bdAllTasks.map(t => t.client||"Internal").filter(Boolean))].sort((a,b) => a==="all"?-1:b==="all"?1:a.localeCompare(b));
+                const bdStatuses = ["all", "Done", "In Progress", "Blocked", "EOD pending"];
+                const bdFiltered = bdAllTasks.filter(t => {
+                  const matchClient = bdClientFilter === "all" || (t.client||"Internal") === bdClientFilter;
+                  const effectiveStatus = t._eodMissing ? "EOD pending" : (t.status || t.outcome || "In Progress");
+                  const matchStatus = bdStatusFilter === "all" || effectiveStatus === bdStatusFilter;
+                  return matchClient && matchStatus;
+                });
+                const FP = ({ val, opts, onChange }) => (
+                  <select value={val} onChange={e => onChange(e.target.value)}
+                    style={{ fontSize:11,padding:"3px 8px",borderRadius:6,border:"0.5px solid var(--border)",
+                      background:"var(--surface)",color:"var(--text)",fontFamily:"inherit",cursor:"pointer" }}>
+                    {opts.map(o => <option key={o} value={o}>{o === "all" ? "All" : o}</option>)}
+                  </select>
+                );
+                return (
+                  <div className="card">
+                    <div className="card-header">
+                      <span className="card-title">Task breakdown</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ fontSize:11,color:"var(--faint)" }}>Client</span>
+                        <FP val={bdClientFilter} opts={bdClients} onChange={v => { setBdClientFilter(v); }} />
+                        <span style={{ fontSize:11,color:"var(--faint)",marginLeft:4 }}>Status</span>
+                        <FP val={bdStatusFilter} opts={bdStatuses} onChange={v => { setBdStatusFilter(v); }} />
+                      </div>
+                    </div>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width:88 }}>Date</th>
+                          <th style={{ width:85 }}>Client</th>
+                          <th style={{ width:75 }}>Priority</th>
+                          <th>Task</th>
+                          <th style={{ width:88 }}>Start</th>
+                          <th style={{ width:88 }}>Due</th>
+                          <th style={{ width:88 }}>End</th>
+                          <th style={{ width:105 }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bdFiltered.length === 0 ? (
+                          <tr><td colSpan={8} style={{ textAlign:"center",padding:"20px",color:"var(--faint)",fontSize:12 }}>No tasks match the selected filters</td></tr>
+                        ) : bdFiltered.map((t, idx) => {
+                          const os      = OUTCOME_STYLE[t.status]||OUTCOME_STYLE[t.outcome];
+                          const ps      = PRIORITY_STYLE[t.priority||"Medium"];
+                          const overdue = t.dueDate && t.dueDate < TODAY && (t.status||t.outcome) !== "Done";
+                          const isRecur = summary.rawEntries?.[t._ei]?.sod?.tasks?.[t._ti]?.isRecurring;
+                          return (
+                            <tr key={idx} style={{ background: isRecur ? "#EEEDFE15" : t._eodMissing ? "var(--bg)" : "transparent" }}>
+                              <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{fmt(summary.entries[t._ei]?.date)}</td>
+                              <td>{t.client ? <span className="badge badge-blue" style={{ fontSize:11 }}>{t.client}</span> : <span style={{ color:"var(--faint)" }}>—</span>}</td>
+                              <td><span style={{ fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:500,color:ps.color,background:ps.bg,border:`0.5px solid ${ps.bd}` }}>{t.priority||"Medium"}</span></td>
+                              <td className="text-sm">
+                                {isRecur && (
+                                  <span style={{ fontSize:9,marginRight:5,padding:"1px 5px",borderRadius:10,
+                                    background:"#EEEDFE",color:"#534AB7",border:"0.5px solid #AFA9EC",fontWeight:500 }}>↻</span>
+                                )}
+                                {t.text}
+                              </td>
+                              <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{t.startDate||"—"}</td>
+                              <td>
+                                {t.dueDate
+                                  ? <span style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:overdue?"var(--red)":"var(--muted)",fontWeight:overdue?500:400 }}>{t.dueDate}{overdue?" !":""}</span>
+                                  : <span style={{ color:"var(--faint)",fontSize:11 }}>—</span>}
+                              </td>
+                              <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:t.endDate?"var(--green)":"var(--faint)" }}>{t.endDate||"—"}</td>
+                              <td>
+                                {t._eodMissing
+                                  ? <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:"var(--bg)",color:"var(--faint)",border:"0.5px solid var(--border)" }}>EOD pending</span>
+                                  : os
+                                    ? <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:os.bg,color:os.color,border:`0.5px solid ${os.bd}` }}>{t.status||t.outcome}</span>
+                                    : <span style={{ fontSize:11,color:"var(--faint)" }}>{t.status||"—"}</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div style={{ padding:"7px 14px",fontSize:10,color:"var(--faint)",borderTop:"0.5px solid var(--border)" }}>
+                      Carry-over tasks tracked separately above · EOD pending = no EOD submitted that day
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
