@@ -751,7 +751,7 @@ export default function MyHistory({ memberName }) {
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:12 }}>
                   <div className="card" style={{ marginBottom:0 }}>
                     <div className="card-header"><span className="card-title">Work distribution</span></div>
-                    <div className="card-body">
+                    <div className="card-body" style={{ maxHeight:220, overflowY:"auto" }}>
                       {topClients.length === 0 ? (
                         <span style={{ fontSize:12, color:"var(--faint)" }}>No data</span>
                       ) : topClients.map(([c, n]) => (
@@ -769,7 +769,7 @@ export default function MyHistory({ memberName }) {
                   </div>
                   <div className="card" style={{ marginBottom:0 }}>
                     <div className="card-header"><span className="card-title">Status breakdown</span></div>
-                    <div className="card-body">
+                    <div className="card-body" style={{ maxHeight:220, overflowY:"auto" }}>
                       {Object.entries(summary.tasksByStatus).filter(([,v]) => v > 0).map(([s, n]) => (
                         <div key={s} style={{ marginBottom:10 }}>
                           <div className="flex justify-between mb-4">
@@ -789,7 +789,7 @@ export default function MyHistory({ memberName }) {
                       <span className="card-title">Blockers this month</span>
                       <span style={{ fontSize:11, color:"var(--muted)" }}>{summary.totalBlockers} raised</span>
                     </div>
-                    <div className="card-body">
+                    <div className="card-body" style={{ maxHeight:220, overflowY:"auto" }}>
                       {summary.totalBlockers === 0 ? (
                         <div style={{ fontSize:12, color:"var(--faint)", padding:"4px 0" }}>No blockers this month</div>
                       ) : (
@@ -912,10 +912,10 @@ export default function MyHistory({ memberName }) {
                             <span style={{ fontSize:11,color:"var(--muted)" }}>Active until marked Done</span>
                           </div>
                           <div style={{ overflowX:"auto" }}>
-                            <table style={{ width:"100%",borderCollapse:"collapse",minWidth:560 }}>
+                            <table style={{ width:"100%",borderCollapse:"collapse",minWidth:720 }}>
                               <thead><tr style={{ background:"var(--bg)" }}>
-                                <TH w={85}>Client</TH><TH w={75}>Priority</TH><TH>Task</TH>
-                                <TH w={88}>Started</TH><TH w={88}>Due</TH><TH w={80}>Age</TH>
+                                <TH w={115}>Client</TH><TH w={75}>Priority</TH><TH>Task</TH>
+                                <TH w={115}>Started</TH><TH w={115}>Due</TH><TH w={80}>Age</TH>
                                 <TH>Latest note</TH><TH w={95}>Status</TH>
                               </tr></thead>
                               <tbody>
@@ -924,8 +924,8 @@ export default function MyHistory({ memberName }) {
                                   const overdue   = t.dueDate && t.dueDate < TODAY;
                                   return (
                                     <tr key={i} style={{ borderTop:"0.5px solid var(--border)",background:isBlocked?"var(--red-bg)":"transparent" }}>
-                                      <td style={{ padding:"8px 12px" }}>{cPill(t.client)}</td>
-                                      <td style={{ padding:"8px 12px" }}>{pPill(t.priority)}</td>
+                                      <td style={{ padding:"8px 12px",whiteSpace:"nowrap" }}>{cPill(t.client)}</td>
+                                      <td style={{ padding:"8px 12px",whiteSpace:"nowrap" }}>{pPill(t.priority)}</td>
                                       <td style={{ padding:"8px 12px" }}>
                                         <div style={{ fontSize:12,fontWeight:500 }}>{t.text}</div>
                                         {isBlocked && t.blockerDetail && (
@@ -934,7 +934,7 @@ export default function MyHistory({ memberName }) {
                                           </div>
                                         )}
                                       </td>
-                                      <td style={{ padding:"8px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--muted)",whiteSpace:"nowrap" }}>{t.startDate||"—"}</td>
+                                      <td style={{ padding:"8px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--muted)",whiteSpace:"nowrap",minWidth:115 }}>{t.startDate||"—"}</td>
                                       <td style={{ padding:"8px 12px",whiteSpace:"nowrap" }}>
                                         {t.dueDate
                                           ? <span style={{ fontSize:11,fontFamily:"JetBrains Mono, monospace",color:overdue?"var(--red)":"var(--muted)",fontWeight:overdue?500:400 }}>{t.dueDate}{overdue?" !":""}</span>
@@ -962,21 +962,21 @@ export default function MyHistory({ memberName }) {
                             </span>
                           </div>
                           <div style={{ overflowX:"auto" }}>
-                            <table style={{ width:"100%",borderCollapse:"collapse",minWidth:500 }}>
+                            <table style={{ width:"100%",borderCollapse:"collapse",minWidth:720 }}>
                               <thead><tr style={{ background:"var(--bg)" }}>
-                                <TH w={85}>Client</TH><TH w={75}>Priority</TH><TH>Task</TH>
-                                <TH w={88}>Started</TH><TH w={88}>Due</TH><TH w={80}>Days taken</TH><TH w={100}>Completed</TH>
+                                <TH w={115}>Client</TH><TH w={75}>Priority</TH><TH>Task</TH>
+                                <TH w={115}>Started</TH><TH w={115}>Due</TH><TH w={80}>Days taken</TH><TH w={115}>Completed</TH>
                               </tr></thead>
                               <tbody>
                                 {completed.map((t, i) => (
                                   <tr key={i} style={{ borderTop:"0.5px solid var(--border)",background:i%2===1?"var(--bg)":"transparent" }}>
-                                    <td style={{ padding:"7px 12px" }}>{cPill(t.client)}</td>
-                                    <td style={{ padding:"7px 12px" }}>{pPill(t.priority)}</td>
+                                    <td style={{ padding:"7px 12px",whiteSpace:"nowrap" }}>{cPill(t.client)}</td>
+                                    <td style={{ padding:"7px 12px",whiteSpace:"nowrap" }}>{pPill(t.priority)}</td>
                                     <td style={{ padding:"7px 12px",fontSize:12,fontWeight:500 }}>{t.text}</td>
-                                    <td style={{ padding:"7px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--muted)" }}>{t.startDate||"—"}</td>
-                                    <td style={{ padding:"7px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--muted)" }}>{t.dueDate||"—"}</td>
+                                    <td style={{ padding:"7px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--muted)",whiteSpace:"nowrap",minWidth:115 }}>{t.startDate||"—"}</td>
+                                    <td style={{ padding:"7px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--muted)",whiteSpace:"nowrap",minWidth:115 }}>{t.dueDate||"—"}</td>
                                     <td style={{ padding:"7px 12px" }}><AgeBar startDate={t.startDate} dueDate={t.dueDate} isDone={true} /></td>
-                                    <td style={{ padding:"7px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--green)",fontWeight:500 }}>{t.endDate||"—"}</td>
+                                    <td style={{ padding:"7px 12px",fontSize:11,fontFamily:"JetBrains Mono, monospace",color:"var(--green)",fontWeight:500,whiteSpace:"nowrap",minWidth:115 }}>{t.endDate||"—"}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -1024,14 +1024,14 @@ export default function MyHistory({ memberName }) {
                       <table className="data-table">
                         <thead>
                           <tr>
-                            <th style={{ width:88 }}>Date</th>
-                            <th style={{ width:85 }}>Client</th>
+                            <th style={{ width:115, whiteSpace:"nowrap" }}>Date</th>
+                            <th style={{ width:115, whiteSpace:"nowrap" }}>Client</th>
                             <th style={{ width:75 }}>Priority</th>
                             <th>Task</th>
-                            <th style={{ width:88 }}>Start</th>
-                            <th style={{ width:88 }}>Due</th>
-                            <th style={{ width:88 }}>End</th>
-                            <th style={{ width:105 }}>Status</th>
+                            <th style={{ width:105, whiteSpace:"nowrap" }}>Start</th>
+                            <th style={{ width:105, whiteSpace:"nowrap" }}>Due</th>
+                            <th style={{ width:105, whiteSpace:"nowrap" }}>End</th>
+                            <th style={{ width:120, whiteSpace:"nowrap" }}>Status</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1044,8 +1044,8 @@ export default function MyHistory({ memberName }) {
                             const isRecur = summary.rawEntries?.[t._ei]?.sod?.tasks?.[t._ti]?.isRecurring;
                             return (
                               <tr key={idx} style={{ background: isRecur ? "#EEEDFE15" : t._eodMissing ? "var(--bg)" : "transparent" }}>
-                                <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)" }}>{fmt(summary.entries[t._ei]?.date)}</td>
-                                <td>{t.client ? <span className="badge badge-blue" style={{ fontSize:11 }}>{t.client}</span> : <span style={{ color:"var(--faint)" }}>—</span>}</td>
+                                <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:"var(--muted)",whiteSpace:"nowrap" }}>{fmt(summary.entries[t._ei]?.date)}</td>
+                                <td style={{ whiteSpace:"nowrap" }}>{t.client ? <span className="badge badge-blue" style={{ fontSize:11 }}>{t.client}</span> : <span style={{ color:"var(--faint)" }}>—</span>}</td>
                                 <td><span style={{ fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:500,color:ps.color,background:ps.bg,border:`0.5px solid ${ps.bd}` }}>{t.priority||"Medium"}</span></td>
                                 <td className="text-sm">
                                   {isRecur && (
@@ -1061,7 +1061,7 @@ export default function MyHistory({ memberName }) {
                                     : <span style={{ color:"var(--faint)",fontSize:11 }}>—</span>}
                                 </td>
                                 <td style={{ fontFamily:"JetBrains Mono, monospace",fontSize:11,color:t.endDate?"var(--green)":"var(--faint)" }}>{t.endDate||"—"}</td>
-                                <td>
+                                <td style={{ whiteSpace:"nowrap" }}>
                                   {t._eodMissing
                                     ? <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:"var(--bg)",color:"var(--faint)",border:"0.5px solid var(--border)" }}>EOD pending</span>
                                     : os
