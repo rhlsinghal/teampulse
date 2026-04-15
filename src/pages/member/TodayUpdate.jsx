@@ -38,6 +38,9 @@ function calcPct(eodTasks) {
 
 // ── SOD read-only ─────────────────────────────────────────────────────────────
 function SODReadOnly({ sod }) {
+  const tasks = sod.tasks || [];
+  const hasRecurring = tasks.some(t => t.isRecurring);
+  const hasProject   = tasks.some(t => !t.isRecurring);
   return (
     <>
       <div style={{ marginBottom: 10 }}>
@@ -55,36 +58,90 @@ function SODReadOnly({ sod }) {
           })}
         </div>
       </div>
-      <div className="field-label mb-8">Tasks planned</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {(sod.tasks || []).map((t, i) => (
-          <div key={i} style={{ border: "0.5px solid var(--border)", borderRadius: 8, padding: "9px 10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-              {t.client
-                ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
-                : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
-              <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{t.text || "—"}</span>
-              {t.blocker?.trim() && (
-                <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)", padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>
-                  {t.blocker}
-                </span>
-              )}
-            </div>
-            {(t.startDate || t.dueDate) && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                {[["Start", t.startDate], ["Due", t.dueDate]].map(([lbl, val], di) => val ? (
-                  <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 0 }}>
-                    {di > 0 && <span style={{ color: "var(--faint)", fontSize: 10, marginRight: 6 }}>→</span>}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--surface)", padding: "2px 8px", borderRadius: 5, border: "0.5px solid var(--border)" }}>
-                      <span style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{lbl}</span>
-                      <span style={{ fontSize: 11, color: "var(--text)", fontFamily: "JetBrains Mono, monospace" }}>{val}</span>
-                    </div>
-                  </div>
-                ) : null)}
-              </div>
+      <div style={{ overflowX: "auto" }}>
+        <table className="task-table" style={{ minWidth: 760 }}>
+          <thead>
+            <tr>
+              <th style={{ width: 115 }}>Client</th>
+              <th style={{ width: 100 }}>Priority</th>
+              <th style={{ minWidth: 260 }}>Task</th>
+              <th style={{ width: 120 }}>Start date</th>
+              <th style={{ width: 120 }}>Due date</th>
+              <th style={{ minWidth: 155 }}>Blocker / notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {hasRecurring && (
+              <tr>
+                <td colSpan={6} style={{ padding: "5px 10px", background: "#EEEDFE", borderBottom: "0.5px solid #AFA9EC" }}>
+                  <span style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "#534AB7" }}>
+                    ↻ Recurring — auto added for today
+                  </span>
+                </td>
+              </tr>
             )}
-          </div>
-        ))}
+            {tasks.map((t, i) => {
+              const ps = PRIORITY_STYLE[t.priority || "Medium"];
+              const isFirstProject = !t.isRecurring && hasRecurring &&
+                tasks.findIndex(x => !x.isRecurring) === i;
+              const overdue = t.dueDate && t.dueDate < TODAY && !t.isRecurring;
+              return (
+                <>
+                  {isFirstProject && (
+                    <tr key={`sep-${i}`}>
+                      <td colSpan={6} style={{ padding: "5px 10px", background: "var(--surface)", borderBottom: "0.5px solid var(--border)" }}>
+                        <span style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--faint)" }}>
+                          Project tasks
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  <tr key={i} style={{ background: t.isRecurring ? "#EEEDFE20" : "transparent" }}>
+                    <td>
+                      {t.client
+                        ? <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.client}</span>
+                        : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
+                    </td>
+                    <td>
+                      <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 20, fontWeight: 500,
+                        color: ps?.color, background: ps?.bg, border: `0.5px solid ${ps?.bd}` }}>
+                        {t.priority || "Medium"}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
+                      {t.isRecurring && (
+                        <span style={{ fontSize: 9, marginRight: 5, padding: "1px 5px", borderRadius: 10,
+                          background: "#EEEDFE", color: "#534AB7", border: "0.5px solid #AFA9EC", fontWeight: 500 }}>↻</span>
+                      )}
+                      {t.text || "—"}
+                    </td>
+                    <td style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--muted)" }}>
+                      {t.startDate || <span style={{ color: "var(--faint)" }}>—</span>}
+                    </td>
+                    <td>
+                      {t.dueDate
+                        ? <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                            color: overdue ? "var(--red)" : "var(--muted)",
+                            fontWeight: overdue ? 500 : 400,
+                            ...(overdue ? { background: "var(--red-bg)", padding: "2px 6px", borderRadius: 4 } : {}) }}>
+                            {t.dueDate}{overdue ? " !" : ""}
+                          </span>
+                        : <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>}
+                    </td>
+                    <td>
+                      {t.blocker?.trim()
+                        ? <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-bg)",
+                            padding: "2px 8px", borderRadius: 4, border: "0.5px solid var(--red-bd)" }}>
+                            {t.blocker}
+                          </span>
+                        : <span style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic" }}>—</span>}
+                    </td>
+                  </tr>
+                </>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </>
   );
@@ -293,10 +350,12 @@ export default function TodayUpdate({ memberName }) {
   };
 
     const handleSaveSOD = async () => {
-    if (!sodForm.tasks.some(t => t.text.trim())) { showToast("Add at least one task", "error"); return; }
-    // Due date is mandatory for all non-recurring tasks
-    const missingDue = sodForm.tasks.find(t => t.text?.trim() && !t.isRecurring && !t.dueDate?.trim());
-    if (missingDue) { showToast("Please add a due date for all tasks", "error"); return; }
+    // Block rows that have a client but no task text, or task text but no due date
+    const emptyRows = sodForm.tasks.filter(t => !t.isRecurring && (t.client?.trim() || t.text?.trim()) && !t.text?.trim());
+    const missingDue = sodForm.tasks.filter(t => !t.isRecurring && t.text?.trim() && !t.dueDate?.trim());
+    if (emptyRows.length > 0) { showToast("Each row needs a task description", "error"); return; }
+    if (missingDue.length > 0) { showToast(`"${missingDue[0].text}" is missing a due date`, "error"); return; }
+    if (!sodForm.tasks.some(t => t.text?.trim())) { showToast("Add at least one task", "error"); return; }
     const ok = await saveSOD({ ...sodForm, submittedAt: Date.now() });
     showToast(ok ? "SOD submitted ✓" : "Save failed — try again", ok ? "success" : "error");
   };
@@ -447,7 +506,9 @@ export default function TodayUpdate({ memberName }) {
                           <td>
                             <input className="task-cell-input" placeholder="What are you working on?" value={t.text}
                               onChange={e => updateSODTask(i, "text", e.target.value)}
-                              style={{ fontWeight: t.text ? 500 : 400 }} />
+                              style={{ fontWeight: t.text ? 500 : 400,
+                                ...(!t.isRecurring && !t.text?.trim() && t.client?.trim()
+                                  ? { borderColor: "var(--red-bd)", background: "var(--red-bg)" } : {}) }} />
                           </td>
                           <td>
                             <input type="date" className="task-cell-input" value={t.startDate || ""}
@@ -457,7 +518,9 @@ export default function TodayUpdate({ memberName }) {
                           <td>
                             <input type="date" className="task-cell-input" value={t.dueDate || ""}
                               onChange={e => updateSODTask(i, "dueDate", e.target.value)}
-                              style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace" }} />
+                              style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace",
+                                ...(!t.isRecurring && t.text?.trim() && !t.dueDate?.trim()
+                                  ? { borderColor: "var(--red-bd)", background: "var(--red-bg)" } : {}) }} />
                           </td>
                           <td>
                             <input className="task-cell-input" value={t.blocker} placeholder="Leave blank if none"
@@ -489,7 +552,9 @@ export default function TodayUpdate({ memberName }) {
         )}
         {sodSubmitted && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderTop: "0.5px solid var(--border)" }}>
-            <span style={{ fontSize: 11, color: "var(--faint)" }}>SOD submitted</span>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>
+              {(sodData.tasks || []).filter(t => t.text?.trim()).length} tasks · {BANDWIDTH[sodData.bandwidth]?.label || "Balanced"}
+            </span>
             {slackSettings?.tokenSaved && (slackSettings?.channels || []).length > 0 && (
               <button className="btn btn-ghost btn-sm" onClick={() => openSlackModal("sod")}
                 style={{ color: "#4A154B", borderColor: "#4A154B40", gap: 5 }}>
