@@ -153,7 +153,7 @@ function MilestoneDetail({ milestone, onEdit, onDelete, onUpdatePosted, memberNa
     if (!updateText.trim()) return;
     setPosting(true);
     try {
-      const newUpdate = { text: updateText.trim(), date: TODAY, postedAt: Date.now() };
+      const newUpdate = { type: "update", text: updateText.trim(), date: TODAY, postedAt: Date.now() };
       const updatedDoc = {
         ...milestone,
         updates: [...(milestone.updates || []), newUpdate],
@@ -222,24 +222,74 @@ function MilestoneDetail({ milestone, onEdit, onDelete, onUpdatePosted, memberNa
             No updates yet — add the first one below
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {updates.map((u, i) => (
-              <div key={i} style={{ display: "flex", gap: 10 }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                    background: i === 0 ? "var(--accent)" : "var(--border)",
-                    marginTop: 3 }} />
-                  {i < updates.length - 1 && (
-                    <div style={{ width: 1, flex: 1, background: "var(--border)", minHeight: 16 }} />
-                  )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {updates.map((u, i) => {
+              // Dot colour by type
+              const dotColor = u.type === "update"        ? "var(--accent)"
+                             : u.type === "field_change"  ? "var(--amber)"
+                             : u.type === "created"       ? "var(--green)"
+                             : "var(--border)";
+              // Status/date field change style helpers
+              const STATUS_STYLE_MAP = {
+                "Not started": { bg: "var(--surface)",   color: "var(--muted)",  bd: "var(--border)"   },
+                "In progress": { bg: "var(--blue-bg)",   color: "var(--blue)",   bd: "var(--blue-bd)"  },
+                "On track":    { bg: "var(--green-bg)",  color: "var(--green)",  bd: "var(--green-bd)" },
+                "At risk":     { bg: "var(--amber-bg)",  color: "var(--amber)",  bd: "var(--amber-bd)" },
+                "Done":        { bg: "var(--green-bg)",  color: "var(--green)",  bd: "var(--green-bd)" },
+              };
+              const pill = (val, field) => {
+                if (field === "status") {
+                  const s = STATUS_STYLE_MAP[val] || STATUS_STYLE_MAP["Not started"];
+                  return <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 20,
+                    fontWeight: 500, background: s.bg, color: s.color, border: `0.5px solid ${s.bd}` }}>{val || "—"}</span>;
+                }
+                return <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 20, fontWeight: 500,
+                  background: "var(--surface)", color: "var(--muted)", border: "0.5px solid var(--border)" }}>{val || "—"}</span>;
+              };
+              return (
+                <div key={i} style={{ display: "flex", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                      background: dotColor, marginTop: 4 }} />
+                    {i < updates.length - 1 && (
+                      <div style={{ width: 1, flex: 1, background: "var(--border)", minHeight: 16 }} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, paddingBottom: 14 }}>
+                    {/* Free-text update */}
+                    {(!u.type || u.type === "update") && (
+                      <div style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.6 }}>{u.text}</div>
+                    )}
+                    {/* Field change */}
+                    {u.type === "field_change" && (
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 2 }}>
+                          <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500 }}>
+                            {u.fieldLabel} changed
+                          </span>
+                          {pill(u.from, u.field)}
+                          <span style={{ fontSize: 11, color: "var(--faint)" }}>→</span>
+                          {pill(u.to, u.field)}
+                        </div>
+                        {/* For description/title changes, show the new value in italics */}
+                        {(u.field === "description" || u.field === "title") && u.to && (
+                          <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic",
+                            lineHeight: 1.5, marginTop: 2 }}>"{u.to}"</div>
+                        )}
+                      </div>
+                    )}
+                    {/* Created */}
+                    {u.type === "created" && (
+                      <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 20,
+                        fontWeight: 500, background: "var(--green-bg)", color: "var(--green)",
+                        border: "0.5px solid var(--green-bd)" }}>Milestone created</span>
+                    )}
+                    <div style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace",
+                      color: "var(--faint)", marginTop: 3 }}>{fmt(u.date)}</div>
+                  </div>
                 </div>
-                <div style={{ flex: 1, paddingBottom: 4 }}>
-                  <div style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.6 }}>{u.text}</div>
-                  <div style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace",
-                    color: "var(--faint)", marginTop: 3 }}>{fmt(u.date)}</div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -290,30 +340,51 @@ export default function Milestones({ memberName }) {
 
   const handleSave = async (form) => {
     const isEdit = !!form.id;
+    const now = Date.now();
     if (isEdit) {
-      // Update existing — preserve updates array
       const existing = milestones.find(m => m.id === form.id);
+      // Diff tracked fields and generate change entries
+      const TRACKED = [
+        { key: "status",      label: "Status"      },
+        { key: "targetDate",  label: "Target date" },
+        { key: "title",       label: "Title"       },
+        { key: "description", label: "Description" },
+        { key: "client",      label: "Client"      },
+      ];
+      const changeEntries = TRACKED
+        .filter(f => (existing[f.key] || "") !== (form[f.key] || ""))
+        .map(f => ({
+          type: "field_change",
+          field: f.key,
+          fieldLabel: f.label,
+          from: existing[f.key] || "",
+          to:   form[f.key]     || "",
+          date: TODAY,
+          postedAt: now,
+        }));
       const updated = {
         ...existing,
-        title: form.title,
-        client: form.client,
+        title:       form.title,
+        client:      form.client,
         description: form.description,
-        status: form.status,
-        targetDate: form.targetDate,
-        updatedAt: Date.now(),
+        status:      form.status,
+        targetDate:  form.targetDate,
+        updates:     [...(existing.updates || []), ...changeEntries],
+        updatedAt:   now,
       };
       await setDoc(doc(db, "milestones", memberName, "items", form.id), updated);
       setMilestones(prev => prev.map(m => m.id === form.id ? updated : m));
     } else {
-      // Create new
-      const firstUpdates = form.firstUpdate?.trim()
-        ? [{ text: form.firstUpdate.trim(), date: TODAY, postedAt: Date.now() }]
-        : [];
+      // Create new — always add a "created" entry, plus optional first update
+      const createdEntry = { type: "created", date: TODAY, postedAt: now };
+      const firstEntries = form.firstUpdate?.trim()
+        ? [createdEntry, { type: "update", text: form.firstUpdate.trim(), date: TODAY, postedAt: now }]
+        : [createdEntry];
       const newDoc = {
         title: form.title, client: form.client, description: form.description,
         status: form.status, targetDate: form.targetDate,
-        updates: firstUpdates,
-        createdAt: Date.now(), updatedAt: Date.now(),
+        updates: firstEntries,
+        createdAt: now, updatedAt: now,
       };
       const ref = doc(collection(db, "milestones", memberName, "items"));
       await setDoc(ref, newDoc);
