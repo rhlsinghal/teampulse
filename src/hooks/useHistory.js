@@ -111,7 +111,12 @@ export function useHistory(memberName) {
     let streak = 0;
     const d = new Date();
     while (true) {
+      // Skip weekends — don't require entries for Sat/Sun, just step over them
+      if (d.getDay() === 0) { d.setDate(d.getDate() - 1); continue; } // Sun → Sat
+      if (d.getDay() === 6) { d.setDate(d.getDate() - 1); continue; } // Sat → Fri
       const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      // If today has no entry yet, skip it (don't break — give today a pass)
+      if (iso === TODAY && !entries.find(e => e.date === iso)) { d.setDate(d.getDate() - 1); continue; }
       if (entries.find(e => e.date === iso)) { streak++; d.setDate(d.getDate() - 1); }
       else break;
     }
