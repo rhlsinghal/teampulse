@@ -519,11 +519,6 @@ export default function TodayUpdate({ memberName }) {
                               style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 6, border: `0.5px solid ${ps?.bd || "var(--border)"}`, background: ps?.bg || "var(--surface)", color: ps?.color || "var(--text)", fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
                               {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
-                            {isPastDueIP && (
-                              <div style={{ fontSize:10, color:"var(--amber)", marginTop:2, fontStyle:"italic" }}>
-                                Past due — please update
-                              </div>
-                            )}
                           </td>
                           <td>
                             <input className="task-cell-input" placeholder="What are you working on?" value={t.text}
