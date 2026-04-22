@@ -104,10 +104,11 @@ export function TopNav({ displayName, photoURL, isManager, onLogout, previewMode
 // ─── Member Sidebar ───────────────────────────────────────────────────────────
 export function MemberSidebar({ page, onChange, streak, sodSubmitted, eodSubmitted, completionPct }) {
   const items = [
-    { key: "today",   icon: "📋", label: "Today's update" },
-    { key: "history", icon: "🕓", label: "My history" },
-    { key: "recurring", icon: "🔁", label: "Recurring tasks" },
-    { key: "slack",     icon: "💬", label: "Slack settings"  },
+    { key: "today",      icon: "📋", label: "Today's update" },
+    { key: "history",    icon: "🕓", label: "My history"      },
+    { key: "milestones", icon: "🎯", label: "Milestones"      },
+    { key: "recurring",  icon: "🔁", label: "Recurring tasks" },
+    { key: "slack",      icon: "💬", label: "Slack settings"  },
   ];
   return (
     <div className="sidebar">
