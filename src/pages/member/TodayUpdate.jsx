@@ -31,9 +31,10 @@ function getOutcomeOptions(task, prevOutcome) {
   return { options: ["Done", "Carry over", "Blocked"], defaultOutcome: prevOutcome || "Carry over" };
 }
 const OUTCOME_STYLE = {
-  "Done":       { bg: "var(--green-bg)", color: "var(--green)", bd: "var(--green-bd)" },
-  "Carry over": { bg: "var(--amber-bg)", color: "var(--amber)", bd: "var(--amber-bd)" },
-  "Blocked":    { bg: "var(--red-bg)",   color: "var(--red)",   bd: "var(--red-bd)"   },
+  "Done":        { bg: "var(--green-bg)", color: "var(--green)", bd: "var(--green-bd)" },
+  "Carry over":  { bg: "var(--amber-bg)", color: "var(--amber)", bd: "var(--amber-bd)" },
+  "Blocked":     { bg: "var(--red-bg)",   color: "var(--red)",   bd: "var(--red-bd)"   },
+  "In Progress": { bg: "var(--blue-bg)",  color: "var(--blue)",  bd: "var(--blue-bd)"  },
 };
 
 const PRIORITIES = ["High", "Medium", "Low"];
@@ -642,7 +643,7 @@ export default function TodayUpdate({ memberName }) {
                   </thead>
                   <tbody>
                     {eodForm.tasks.map((t, i) => {
-                      const s         = OUTCOME_STYLE[t.outcome] || OUTCOME_STYLE["Done"];
+                      const s         = OUTCOME_STYLE[t.outcome] || OUTCOME_STYLE["In Progress"] || OUTCOME_STYLE["Done"];
                       const isAdhoc   = !t.fromSOD;
                       const isDuePast = t.dueDate && t.dueDate < TODAY && t.outcome !== "Done";
                       const ps        = PRIORITY_STYLE[t.priority || "Medium"];
@@ -679,7 +680,7 @@ export default function TodayUpdate({ memberName }) {
                           </td>
                           {/* Outcome */}
                           <td>
-                            <select value={t.outcome}
+                            <select value={t.outcome || ""}
                               onChange={e => { const v = e.target.value; updateEODTask(i, "outcome", v); updateEODTask(i, "carryOver", v === "Carry over"); }}
                               style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 6, border: `0.5px solid ${s.bd}`, background: s.bg, color: s.color, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
                               {outcomeOpts.map(o => <option key={o} value={o}>{o}</option>)}
