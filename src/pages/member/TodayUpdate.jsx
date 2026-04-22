@@ -14,6 +14,22 @@ const emptySOD = () => ({
 const emptyEOD = () => ({});
 
 const OUTCOMES = ["Done", "Carry over", "Blocked"];
+
+// Returns { options, defaultOutcome } based on task due date
+function getOutcomeOptions(task, prevOutcome) {
+  const due = task.dueDate || "";
+  if (!due || due > TODAY) {
+    return { options: ["Done", "In Progress", "Blocked"], defaultOutcome: "In Progress" };
+  }
+  if (due === TODAY) {
+    return { options: ["Done", "Carry over", "Blocked"], defaultOutcome: "Done" };
+  }
+  // Past due
+  if (prevOutcome === "In Progress") {
+    return { options: ["Done", "Carry over", "Blocked"], defaultOutcome: null };
+  }
+  return { options: ["Done", "Carry over", "Blocked"], defaultOutcome: prevOutcome || "Carry over" };
+}
 const OUTCOME_STYLE = {
   "Done":       { bg: "var(--green-bg)", color: "var(--green)", bd: "var(--green-bd)" },
   "Carry over": { bg: "var(--amber-bg)", color: "var(--amber)", bd: "var(--amber-bd)" },
@@ -226,7 +242,7 @@ export default function TodayUpdate({ memberName }) {
         startDate:     t.startDate || "",
         dueDate:       t.dueDate   || "",
         fromSOD:       true,
-        outcome:       existing[i]?.outcome       || "Done",
+        outcome:       existing[i]?.outcome       || getOutcomeOptions({ dueDate: t.dueDate }, null).defaultOutcome || "Done",
         carryOver:     existing[i]?.carryOver      ?? false,
         notes:         existing[i]?.notes          || "",
         blockerDetail: existing[i]?.blockerDetail  || "",
@@ -245,7 +261,7 @@ export default function TodayUpdate({ memberName }) {
 
   // EOD helpers
   const updateEODTask = (i, field, val) => setEODForm(f => ({ ...f, tasks: f.tasks.map((t, idx) => idx === i ? { ...t, [field]: val } : t) }));
-  const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", fromSOD: false, adhoc: true, priority: "Medium", startDate: TODAY, dueDate: "", outcome: "Done", carryOver: false, notes: "", blockerDetail: "", blockerOwner: "" }] }));
+  const addEODTask    = () => setEODForm(f => ({ ...f, tasks: [...f.tasks, { client: "", text: "", fromSOD: false, adhoc: true, priority: "Medium", startDate: TODAY, dueDate: "", outcome: "In Progress", carryOver: false, notes: "", blockerDetail: "", blockerOwner: "" }] }));
   const removeEODTask = (i) => setEODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
   // ── Slack helpers ────────────────────────────────────────────────────────────
@@ -502,6 +518,11 @@ export default function TodayUpdate({ memberName }) {
                               style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 6, border: `0.5px solid ${ps?.bd || "var(--border)"}`, background: ps?.bg || "var(--surface)", color: ps?.color || "var(--text)", fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
                               {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
+                            {isPastDueIP && (
+                              <div style={{ fontSize:10, color:"var(--amber)", marginTop:2, fontStyle:"italic" }}>
+                                Past due — please update
+                              </div>
+                            )}
                           </td>
                           <td>
                             <input className="task-cell-input" placeholder="What are you working on?" value={t.text}
@@ -625,8 +646,10 @@ export default function TodayUpdate({ memberName }) {
                       const isAdhoc   = !t.fromSOD;
                       const isDuePast = t.dueDate && t.dueDate < TODAY && t.outcome !== "Done";
                       const ps        = PRIORITY_STYLE[t.priority || "Medium"];
+                      const isPastDueIP = !isAdhoc && t.dueDate && t.dueDate < TODAY && t.outcome === "In Progress";
+                      const { options: outcomeOpts } = getOutcomeOptions(t, t.outcome);
                       return (
-                        <tr key={i} style={{ background: isAdhoc ? "#fffbeb" : "transparent" }}>
+                        <tr key={i} style={{ background: isPastDueIP ? "#FAEEDA30" : isAdhoc ? "#fffbeb" : "transparent" }}>
                           {/* Client */}
                           <td>
                             {isAdhoc
@@ -659,7 +682,7 @@ export default function TodayUpdate({ memberName }) {
                             <select value={t.outcome}
                               onChange={e => { const v = e.target.value; updateEODTask(i, "outcome", v); updateEODTask(i, "carryOver", v === "Carry over"); }}
                               style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 6, border: `0.5px solid ${s.bd}`, background: s.bg, color: s.color, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
-                              {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+                              {outcomeOpts.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                           </td>
                           {/* Start date */}

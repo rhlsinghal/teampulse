@@ -21,9 +21,10 @@ export function normaliseEntry(entry) {
         notes:         t.notes         || "",
         blockerDetail: t.blockerDetail || "",
         blockerOwner:  t.blockerOwner  || "",
-        status: t.outcome === "Done"       ? "Done"
-              : t.outcome === "Blocked"    ? "Blocked"
-              : t.outcome === "Carry over" ? "Carry over"
+        status: t.outcome === "Done"        ? "Done"
+              : t.outcome === "Blocked"     ? "Blocked"
+              : t.outcome === "Carry over"  ? "Carry over"
+              : t.outcome === "In Progress" ? "In Progress"
               : "In Progress",
       }))
     : sodTasks.map(t => ({

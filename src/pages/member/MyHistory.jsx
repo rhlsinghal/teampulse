@@ -461,7 +461,9 @@ function buildSummary(entries, year, month) {
         return; // exclude from project totals
       }
       // Only count tasks toward stats when EOD was actually submitted
-      if (!e.eodMissing) {
+      // Exclude future-due In Progress tasks — on track, not yet completable
+      const isFutureIP = t.outcome === "In Progress" && t.dueDate && t.dueDate > e.date;
+      if (!e.eodMissing && !isFutureIP) {
         totalTasks++;
         const cl = t.client || "Internal";
         tasksByClient[cl] = (tasksByClient[cl] || 0) + 1;
@@ -990,11 +992,47 @@ export default function MyHistory({ memberName }) {
 
                 {/* ── Task breakdown table ── */}
                 {(() => {
-                  const bdAllTasks = summary.entries.flatMap((e, ei) =>
+                  // Build flat list — deduplicate In Progress rows by client|text
+                  const bdRaw = summary.entries.flatMap((e, ei) =>
                     (e.tasks||[])
                       .filter(t => t.text?.trim() && !t.isCarryOver && t.outcome !== "Carry over")
-                      .map((t, ti) => ({ ...t, _ei: ei, _ti: ti, _eodMissing: e.eodMissing }))
+                      .map((t, ti) => ({ ...t, _ei: ei, _ti: ti, _eodMissing: e.eodMissing, _entryDate: e.date }))
                   );
+                  // Count how many days each task was "In Progress"
+                  const ipDaysMap = {};
+                  bdRaw.forEach(t => {
+                    if ((t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing) {
+                      const key = `${t.client||""}|${t.text.trim()}`;
+                      ipDaysMap[key] = (ipDaysMap[key] || 0) + 1;
+                    }
+                  });
+                  // Track latest IP entry per key for display
+                  const ipLatest = {};
+                  bdRaw.forEach(t => {
+                    if ((t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing) {
+                      const key = `${t.client||""}|${t.text.trim()}`;
+                      if (!ipLatest[key] || t._entryDate > ipLatest[key]._entryDate) ipLatest[key] = t;
+                    }
+                  });
+                  // Collapse repeated IP rows — keep only the latest; non-IP rows pass through
+                  const ipSeen = new Set();
+                  const bdAllTasks = bdRaw
+                    .filter(t => {
+                      if ((t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing) {
+                        const key = `${t.client||""}|${t.text.trim()}`;
+                        if (ipSeen.has(key)) return false;
+                        ipSeen.add(key);
+                        return true;
+                      }
+                      return true;
+                    })
+                    .map(t => {
+                      const key = `${t.client||""}|${t.text.trim()}`;
+                      const ipDays = ipDaysMap[key] || 0;
+                      const base = (t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing
+                        ? (ipLatest[key] || t) : t;
+                      return { ...base, _ipDays: ipDays };
+                    });
                   const bdClients  = ["all", ...new Set(bdAllTasks.map(t => t.client||"Internal").filter(Boolean))].sort((a,b) => a==="all"?-1:b==="all"?1:a.localeCompare(b));
                   const bdStatuses = ["all", "Done", "In Progress", "Blocked", "EOD pending"];
                   const bdFiltered = bdAllTasks.filter(t => {
@@ -1065,7 +1103,15 @@ export default function MyHistory({ memberName }) {
                                   {t._eodMissing
                                     ? <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:"var(--bg)",color:"var(--faint)",border:"0.5px solid var(--border)" }}>EOD pending</span>
                                     : os
-                                      ? <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:os.bg,color:os.color,border:`0.5px solid ${os.bd}` }}>{t.status||t.outcome}</span>
+                                      ? <span style={{ display:"inline-flex",alignItems:"center",gap:5 }}>
+                                          <span style={{ fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500,background:os.bg,color:os.color,border:`0.5px solid ${os.bd}` }}>{t.status||t.outcome}</span>
+                                          {t._ipDays > 0 && (
+                                            <span style={{ fontSize:10,padding:"1px 6px",borderRadius:20,fontWeight:500,
+                                              background:"var(--surface)",color:"var(--muted)",border:"0.5px solid var(--border)" }}>
+                                              {t._ipDays}d
+                                            </span>
+                                          )}
+                                        </span>
                                       : <span style={{ fontSize:11,color:"var(--faint)" }}>{t.status||"—"}</span>}
                                 </td>
                               </tr>
