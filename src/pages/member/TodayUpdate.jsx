@@ -180,10 +180,11 @@ export default function TodayUpdate({ memberName }) {
   const [sodForm, setSODForm] = useState(emptySOD());
   const [eodForm, setEODForm] = useState({ tasks: [], ...emptyEOD() });
   const [eodExpanded,   setEodExpanded]   = useState(null);
-  const [slackModal,    setSlackModal]    = useState(null);  // null | "sod" | "eod"
+  const [slackModal,    setSlackModal]    = useState(null);   // null | "sod" | "eod"
   const [slackPosting,  setSlackPosting]  = useState(false);
-  const [slackDone,     setSlackDone]     = useState({});    // { channelId: true/false }
-  const [selectedChans, setSelectedChans] = useState({});   // { channelId: bool }
+  const [slackDone,     setSlackDone]     = useState({});     // { channelId: "sent"|errorMsg }
+  const [taskChanMap,   setTaskChanMap]   = useState({});     // { taskIdx: channelId | "none" }
+  const [previewChan,   setPreviewChan]   = useState(null);   // channelId being previewed
 
   // Pre-fill SOD — if no SOD yet today, check yesterday's EOD for carry-overs
   useEffect(() => {
@@ -266,20 +267,17 @@ export default function TodayUpdate({ memberName }) {
   const removeEODTask = (i) => setEODForm(f => ({ ...f, tasks: f.tasks.filter((_, idx) => idx !== i) }));
 
   // ── Slack helpers ────────────────────────────────────────────────────────────
-  const buildSlackBlocks = (type) => {
+  // Build Slack message for a given set of tasks (already filtered per channel)
+  const buildSlackBlocksForChannel = (type, filteredTasks) => {
     const isSod    = type === "sod";
     const sodTasks = sodData?.tasks || [];
-    const eodTasks = eodData?.tasks || [];
-    const tasks    = isSod ? sodTasks : eodTasks;
 
-    // Date header: DD-MM-YYYY
     const now     = new Date();
     const dd      = String(now.getDate()).padStart(2, "0");
     const mm      = String(now.getMonth() + 1).padStart(2, "0");
     const yyyy    = now.getFullYear();
     const dateStr = `${dd}-${mm}-${yyyy}`;
 
-    // Full date formatter: "06 Apr 2026"
     const fmtDate = (iso) => {
       if (!iso) return null;
       const d = new Date(iso + "T00:00:00");
@@ -287,11 +285,11 @@ export default function TodayUpdate({ memberName }) {
     };
 
     const header = `Date: ${dateStr} || ${isSod ? "Morning Updates" : "Evening Updates"}`;
-    const lines  = [];
+    const msgLines = [];
 
-    tasks.filter(t => t.text?.trim()).forEach((t, i) => {
-      const client   = t.client?.trim() || "Internal";
-      lines.push(`${i + 1}. ${client} | ${t.text}`);
+    filteredTasks.filter(t => t.text?.trim()).forEach((t, i) => {
+      const client = t.client?.trim() || "Internal";
+      msgLines.push(`${i + 1}. ${client} | ${t.text}`);
 
       if (isSod) {
         const s = fmtDate(t.startDate);
@@ -300,66 +298,89 @@ export default function TodayUpdate({ memberName }) {
           const parts = [];
           if (s) parts.push(`Start: ${s}`);
           if (d) parts.push(`Due: ${d}`);
-          lines.push(`   ${parts.join("  |  ")}`);
+          msgLines.push(`   ${parts.join("  |  ")}`);
         }
       } else {
-        const sodTask = sodTasks[i] || {};
+        // For EOD — find the matching SOD task by text to get original dates
+        const sodTask = sodTasks.find(st => st.text === t.text) || {};
         const s = fmtDate(t.startDate || sodTask.startDate);
         const d = fmtDate(t.dueDate   || sodTask.dueDate);
         if (s || d) {
           const parts = [];
           if (s) parts.push(`Start: ${s}`);
           if (d) parts.push(`Due: ${d}`);
-          lines.push(`   ${parts.join("  |  ")}`);
+          msgLines.push(`   ${parts.join("  |  ")}`);
         }
         if (t.outcome === "Done") {
-          lines.push(`   Outcome: Done`);
+          msgLines.push(`   Outcome: Done`);
         } else if (t.outcome === "Carry over") {
           const note = t.notes?.trim() ? `  |  Note: ${t.notes}` : "";
-          lines.push(`   Outcome: Carry over${note}`);
+          msgLines.push(`   Outcome: Carry over${note}`);
         } else if (t.outcome === "Blocked") {
           const parts = ["Outcome: Blocked"];
           if (t.blockerDetail?.trim()) parts.push(`Blocker: ${t.blockerDetail}`);
           if (t.blockerOwner?.trim())  parts.push(`Owner: ${t.blockerOwner}`);
-          lines.push(`   ${parts.join("  |  ")}`);
+          msgLines.push(`   ${parts.join("  |  ")}`);
+        } else if (t.outcome === "In Progress") {
+          msgLines.push(`   Outcome: In Progress`);
         }
       }
     });
 
-    const fullText = [header, "", ...lines].join("\n");
-
+    const fullText = [header, "", ...msgLines].join("\n");
     return {
       text: fullText,
       blocks: [
         { type: "section", text: { type: "mrkdwn", text: `*${header}*` } },
         { type: "divider" },
-        { type: "section", text: { type: "mrkdwn", text: lines.join("\n") || "—" } },
+        { type: "section", text: { type: "mrkdwn", text: msgLines.join("\n") || "—" } },
       ],
     };
   };
 
   const openSlackModal = (type) => {
-    const channels = slackSettings?.channels || [];
-    // Pre-select all configured channels
-    const init = {};
-    channels.forEach(c => { if (c.channelId?.trim()) init[c.channelId] = true; });
-    setSelectedChans(init);
+    const channels  = (slackSettings?.channels || []).filter(c => c.channelId?.trim());
+    const tasks     = type === "sod" ? (sodData?.tasks || []) : (eodData?.tasks || []);
+    // Smart default: match task client to channel label (case-insensitive partial match)
+    const initMap   = {};
+    tasks.forEach((t, i) => {
+      if (!t.text?.trim()) return;
+      if (t.isRecurring) { initMap[i] = "none"; return; }
+      const client  = (t.client || "").toLowerCase().trim();
+      const matched = channels.find(c => {
+        const lbl = (c.label || "").toLowerCase();
+        return client && (lbl.includes(client) || client.includes(lbl));
+      });
+      initMap[i] = matched ? matched.channelId : (channels[0]?.channelId || "none");
+    });
+    setTaskChanMap(initMap);
     setSlackDone({});
+    setPreviewChan(channels[0]?.channelId || null);
     setSlackModal(type);
   };
 
   const postToSlack = async () => {
-    const channels = (slackSettings?.channels || []).filter(c => selectedChans[c.channelId]);
-    if (!channels.length) return;
+    const allTasks = slackModal === "sod" ? (sodData?.tasks || []) : (eodData?.tasks || []);
+    const channels = (slackSettings?.channels || []).filter(c => c.channelId?.trim());
+    // Group tasks by channel
+    const chanTasks = {};
+    allTasks.forEach((t, i) => {
+      const chId = taskChanMap[i];
+      if (!chId || chId === "none" || !t.text?.trim()) return;
+      if (!chanTasks[chId]) chanTasks[chId] = [];
+      chanTasks[chId].push(t);
+    });
+    const activeChans = Object.keys(chanTasks);
+    if (!activeChans.length) return;
     setSlackPosting(true);
-    const { text, blocks } = buildSlackBlocks(slackModal);
     const results = {};
-    for (const ch of channels) {
+    for (const chId of activeChans) {
       try {
-        await postMessage(ch.channelId, text, blocks);
-        results[ch.channelId] = "sent";
+        const { text, blocks } = buildSlackBlocksForChannel(slackModal, chanTasks[chId]);
+        await postMessage(chId, text, blocks);
+        results[chId] = "sent";
       } catch (e) {
-        results[ch.channelId] = e.message || "error";
+        results[chId] = e.message || "error";
       }
     }
     setSlackDone(results);
@@ -811,90 +832,188 @@ export default function TodayUpdate({ memberName }) {
       </div>
 
       {/* ── Slack post modal ── */}
-      {slackModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)",
-            borderRadius: 14, width: 520, maxWidth: "95vw", maxHeight: "85vh",
-            overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {slackModal && (() => {
+        const allTasks  = slackModal === "sod" ? (sodData?.tasks || []) : (eodData?.tasks || []);
+        const channels  = (slackSettings?.channels || []).filter(c => c.channelId?.trim());
+        const chanOpts  = [{ channelId: "none", label: "Don't send" }, ...channels];
+        // Compute per-channel task counts and preview text
+        const chanTasksMap = {};
+        allTasks.forEach((t, i) => {
+          const chId = taskChanMap[i];
+          if (!chId || chId === "none" || !t.text?.trim()) return;
+          if (!chanTasksMap[chId]) chanTasksMap[chId] = [];
+          chanTasksMap[chId].push(t);
+        });
+        const postingToCount = Object.keys(chanTasksMap).length;
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+            <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)",
+              borderRadius: 14, width: 560, maxWidth: "95vw", maxHeight: "88vh",
+              overflow: "hidden", display: "flex", flexDirection: "column" }}>
 
-            {/* Header */}
-            <div style={{ padding: "12px 16px", borderBottom: "0.5px solid var(--border)",
-              display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>
-                  Post {slackModal === "sod" ? "SOD" : "EOD"} to Slack
+              {/* Header */}
+              <div style={{ padding: "10px 16px", background: "#4A154B",
+                display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%",
+                    background: slackModal === "sod" ? "#fbbf24" : "#6ee7b7" }} />
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "#fff" }}>
+                    Post {slackModal === "sod" ? "SOD" : "EOD"} to Slack
+                  </span>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-                  Select channels · message posts as you
-                </div>
-              </div>
-              <button onClick={() => setSlackModal(null)}
-                style={{ fontSize: 18, background: "none", border: "none", cursor: "pointer",
-                  color: "var(--faint)", lineHeight: 1 }}>×</button>
-            </div>
-
-            <div style={{ padding: "14px 16px", overflowY: "auto", flex: 1 }}>
-              {/* Channel selector */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase",
-                  letterSpacing: "0.07em", color: "var(--faint)", marginBottom: 8 }}>
-                  Select channels
-                </div>
-                {(slackSettings?.channels || []).filter(c => c.channelId?.trim()).map(c => (
-                  <div key={c.channelId} onClick={() => setSelectedChans(s => ({ ...s, [c.channelId]: !s[c.channelId] }))}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
-                      borderRadius: 8, cursor: "pointer", marginBottom: 5,
-                      background: selectedChans[c.channelId] ? "var(--blue-bg)" : "var(--bg)",
-                      border: `0.5px solid ${selectedChans[c.channelId] ? "var(--blue-bd)" : "var(--border)"}` }}>
-                    <div style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                      background: selectedChans[c.channelId] ? "var(--accent)" : "var(--surface)",
-                      border: `0.5px solid ${selectedChans[c.channelId] ? "var(--accent)" : "var(--border)"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {selectedChans[c.channelId] && <span style={{ fontSize: 10, color: "#fff" }}>✓</span>}
-                    </div>
-                    <div>
-                      <span style={{ fontSize: 12, fontWeight: 500 }}>{c.label || c.channelId}</span>
-                      <span style={{ fontSize: 10, color: "var(--faint)", marginLeft: 6,
-                        fontFamily: "JetBrains Mono, monospace" }}>{c.channelId}</span>
-                    </div>
-                    {slackDone[c.channelId] === "sent" && (
-                      <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--green)", fontWeight: 500 }}>✓ Sent</span>
-                    )}
-                    {slackDone[c.channelId] && slackDone[c.channelId] !== "sent" && (
-                      <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--red)" }}>✗ {slackDone[c.channelId]}</span>
-                    )}
-                  </div>
-                ))}
+                <button onClick={() => setSlackModal(null)}
+                  style={{ fontSize: 18, background: "none", border: "none", cursor: "pointer",
+                    color: "rgba(255,255,255,0.5)", lineHeight: 1 }}>×</button>
               </div>
 
-              {/* Message preview */}
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase",
+              <div style={{ padding: "14px 16px", overflowY: "auto", flex: 1 }}>
+
+                {/* Task → channel assignment */}
+                <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase",
                   letterSpacing: "0.07em", color: "var(--faint)", marginBottom: 8 }}>
-                  Message preview
+                  Assign each task to a channel
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                  {allTasks.map((t, i) => {
+                    if (!t.text?.trim()) return null;
+                    const chId  = taskChanMap[i] || "none";
+                    const chObj = channels.find(c => c.channelId === chId);
+                    const isSending = chId !== "none";
+                    return (
+                      <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 160px",
+                        gap: 10, alignItems: "center", padding: "7px 10px", borderRadius: 8,
+                        border: `0.5px solid ${isSending ? "var(--blue-bd)" : "var(--border)"}`,
+                        background: isSending ? "var(--blue-bg)" : "var(--bg)" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            {t.isRecurring && (
+                              <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 10,
+                                background: "#EEEDFE", color: "#534AB7", border: "0.5px solid #AFA9EC",
+                                fontWeight: 500, flexShrink: 0 }}>↻</span>
+                            )}
+                            {t.client && (
+                              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 20,
+                                fontWeight: 500, background: "var(--blue-bg)", color: "var(--blue)",
+                                border: "0.5px solid var(--blue-bd)", flexShrink: 0 }}>{t.client}</span>
+                            )}
+                            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {t.text}
+                            </span>
+                          </div>
+                          {slackModal === "eod" && t.outcome && (
+                            <div style={{ fontSize: 10, marginTop: 3, paddingLeft: 2,
+                              color: t.outcome === "Done" ? "var(--green)"
+                                   : t.outcome === "Carry over" ? "var(--amber)"
+                                   : t.outcome === "Blocked" ? "var(--red)" : "var(--muted)" }}>
+                              {t.outcome}
+                              {t.outcome === "Blocked" && t.blockerDetail ? ` — ${t.blockerDetail}` : ""}
+                              {t.outcome === "Carry over" && t.notes ? ` — ${t.notes}` : ""}
+                            </div>
+                          )}
+                        </div>
+                        <select value={chId}
+                          onChange={e => setTaskChanMap(m => ({ ...m, [i]: e.target.value }))}
+                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 6, width: "100%",
+                            border: `0.5px solid ${isSending ? "var(--blue-bd)" : "var(--border)"}`,
+                            background: isSending ? "var(--blue-bg)" : "var(--surface)",
+                            color: isSending ? "var(--blue)" : "var(--muted)",
+                            fontFamily: "inherit", cursor: "pointer", fontWeight: isSending ? 500 : 400 }}>
+                          {chanOpts.map(o => (
+                            <option key={o.channelId} value={o.channelId}>{o.label || o.channelId}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Summary */}
+                <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase",
+                  letterSpacing: "0.07em", color: "var(--faint)", marginBottom: 8 }}>
+                  Summary
                 </div>
                 <div style={{ background: "var(--bg)", border: "0.5px solid var(--border)",
-                  borderRadius: 8, padding: "12px 14px",
-                  fontFamily: "JetBrains Mono, monospace", fontSize: 11,
-                  color: "var(--muted)", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
-                  {buildSlackBlocks(slackModal).text}
+                  borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>
+                  {channels.filter(c => chanTasksMap[c.channelId]).map((c, ci) => (
+                    <div key={c.channelId} style={{ display: "flex", alignItems: "center", gap: 8,
+                      padding: "5px 0", borderBottom: "0.5px solid var(--border)" }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%",
+                        background: "var(--accent)", flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, fontWeight: 500, flex: 1 }}>{c.label || c.channelId}</span>
+                      <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                        {chanTasksMap[c.channelId]?.length || 0} task{chanTasksMap[c.channelId]?.length !== 1 ? "s" : ""}
+                      </span>
+                      <button onClick={() => setPreviewChan(previewChan === c.channelId ? null : c.channelId)}
+                        style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
+                          border: "0.5px solid var(--border)", background: previewChan === c.channelId ? "var(--accent)" : "transparent",
+                          color: previewChan === c.channelId ? "#fff" : "var(--muted)",
+                          fontFamily: "inherit" }}>
+                        {previewChan === c.channelId ? "Hide" : "Preview"}
+                      </button>
+                      {slackDone[c.channelId] === "sent" && (
+                        <span style={{ fontSize: 11, color: "var(--green)", fontWeight: 500 }}>✓ Sent</span>
+                      )}
+                      {slackDone[c.channelId] && slackDone[c.channelId] !== "sent" && (
+                        <span style={{ fontSize: 10, color: "var(--red)" }}>✗ {slackDone[c.channelId]}</span>
+                      )}
+                    </div>
+                  ))}
+                  {channels.filter(c => !chanTasksMap[c.channelId]).map(c => (
+                    <div key={c.channelId} style={{ display: "flex", alignItems: "center", gap: 8,
+                      padding: "5px 0", borderBottom: "0.5px solid var(--border)", opacity: 0.5 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%",
+                        background: "var(--border)", flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: "var(--faint)", flex: 1 }}>{c.label || c.channelId}</span>
+                      <span style={{ fontSize: 11, color: "var(--faint)" }}>no tasks assigned</span>
+                    </div>
+                  ))}
+                  {postingToCount === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--faint)", textAlign: "center", padding: "8px 0" }}>
+                      No tasks assigned to any channel yet
+                    </div>
+                  )}
+                </div>
+
+                {/* Per-channel preview */}
+                {previewChan && chanTasksMap[previewChan] && (
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 500, textTransform: "uppercase",
+                      letterSpacing: "0.07em", color: "var(--faint)", marginBottom: 8 }}>
+                      Preview — {channels.find(c => c.channelId === previewChan)?.label || previewChan}
+                    </div>
+                    <div style={{ background: "var(--bg)", border: "0.5px solid var(--border)",
+                      borderRadius: 8, padding: "12px 14px", fontFamily: "JetBrains Mono, monospace",
+                      fontSize: 11, color: "var(--muted)", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
+                      {buildSlackBlocksForChannel(slackModal, chanTasksMap[previewChan]).text}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: "10px 16px", borderTop: "0.5px solid var(--border)",
+                display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {postingToCount > 0 ? `Posting to ${postingToCount} channel${postingToCount !== 1 ? "s" : ""}` : "No channels selected"}
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-ghost" onClick={() => setSlackModal(null)}>Cancel</button>
+                  <button style={{ fontSize: 11, padding: "5px 14px", borderRadius: 6, border: "none",
+                    background: postingToCount > 0 ? "#4A154B" : "var(--border)",
+                    color: postingToCount > 0 ? "#fff" : "var(--faint)",
+                    cursor: postingToCount > 0 ? "pointer" : "default", fontFamily: "inherit" }}
+                    onClick={postToSlack}
+                    disabled={slackPosting || postingToCount === 0}>
+                    {slackPosting ? "Posting…" : "Post to channels"}
+                  </button>
                 </div>
               </div>
             </div>
-
-            {/* Footer */}
-            <div style={{ padding: "10px 16px", borderTop: "0.5px solid var(--border)",
-              display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button className="btn btn-ghost" onClick={() => setSlackModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={postToSlack}
-                disabled={slackPosting || !Object.values(selectedChans).some(Boolean)}>
-                {slackPosting ? "Posting…" : `Post to ${Object.values(selectedChans).filter(Boolean).length} channel${Object.values(selectedChans).filter(Boolean).length !== 1 ? "s" : ""}`}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <Toast message={toast?.msg} type={toast?.type} />
     </div>
