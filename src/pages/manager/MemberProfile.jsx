@@ -860,7 +860,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const allTasks  = normed.flatMap(e => e.tasks || []).filter(t => t.text?.trim() && !t.isRecurring);
   const monthEntries  = entries.filter(e => e.date?.startsWith(monthKey));
   const monthNormed   = monthEntries.map(normaliseEntry);
-  const monthTasks    = monthNormed.flatMap(e => e.tasks || []).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing);
+  const monthTasks    = monthNormed.flatMap(e => (e.tasks || []).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing));
   const monthDone     = monthTasks.filter(t => t.status === "Done" || t.outcome === "Done").length;
   const monthTotal    = monthTasks.length;
   const monthPct      = monthTotal ? Math.round(monthDone / monthTotal * 100) : 0;
