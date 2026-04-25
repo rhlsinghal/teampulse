@@ -834,6 +834,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const [calYear,    setCalYear]    = useState(new Date().getFullYear());
   const [calMonth,   setCalMonth]   = useState(new Date().getMonth());
   const [profileTab, setProfileTab] = useState("overview"); // "overview" | "milestones"
+  const { tasks: recurringTasks } = useRecurring(memberName);
   const now          = new Date();
   const currentYear  = now.getFullYear();
   const currentMonth = now.getMonth();
@@ -851,8 +852,6 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   }, [memberName]);
 
   if (loading) return <div className="main-content"><Loading /></div>;
-
-  const { tasks: recurringTasks } = useRecurring(memberName);
   const color      = avatarColor(memberName);
   const todayEntry = entries.find(e => e.date === TODAY) || null;
 
