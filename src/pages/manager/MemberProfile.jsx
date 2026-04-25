@@ -3,6 +3,8 @@ import { avatarColor, initials, BANDWIDTH, BW_STYLES } from "../../utils/constan
 import { fmt, TODAY, MONTHS, MONTHS_SHORT, getDaysInMonth, getFirstDayOfMonth, isoDate } from "../../utils/dates";
 import { Loading } from "../../components/index.jsx";
 import { loadEntriesInRange } from "../../hooks/useHistory";
+import { db } from "../../firebase";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { normaliseEntry } from "../../utils/aggregator";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -16,6 +18,13 @@ const PRIORITY_STYLE = {
   "High":   { color: "var(--red)",   bg: "var(--red-bg)",   bd: "var(--red-bd)"   },
   "Medium": { color: "var(--amber)", bg: "var(--amber-bg)", bd: "var(--amber-bd)" },
   "Low":    { color: "var(--blue)",  bg: "var(--blue-bg)",  bd: "var(--blue-bd)"  },
+};
+const MILESTONE_STATUS_STYLE = {
+  "Not started": { bg: "var(--surface)",   color: "var(--muted)",  bd: "var(--border)"   },
+  "In progress": { bg: "var(--blue-bg)",   color: "var(--blue)",   bd: "var(--blue-bd)"  },
+  "On track":    { bg: "var(--green-bg)",  color: "var(--green)",  bd: "var(--green-bd)" },
+  "At risk":     { bg: "var(--amber-bg)",  color: "var(--amber)",  bd: "var(--amber-bd)" },
+  "Done":        { bg: "var(--green-bg)",  color: "var(--green)",  bd: "var(--green-bd)" },
 };
 
 function fmtTime(ts) {
@@ -311,29 +320,37 @@ function CarryOverSection({ entries }) {
     eodTasks.forEach((t, i) => {
       if (!t.text?.trim()) return;
       const sodTask  = sodTasks[i] || {};
-      const isCarry  = t.outcome === "Carry over" || t.outcome === "Blocked" || sodTask.isCarryOver === true;
-      if (!isCarry) return;
+      const isCarry = t.outcome === "Carry over" || t.outcome === "Blocked" || sodTask.isCarryOver === true;
+      if (!isCarry && !(t.outcome === "Done" && sodTask.isCarryOver === true)) return;
 
-      const origin = sodTask.carryOverFrom || t.carryOverFrom || t.startDate || e.date;
-      const key    = `${t.client||""}|${t.text}|${origin}`;
+      const origin  = sodTask.carryOverFrom || t.carryOverFrom || t.startDate || e.date;
+      const key     = `${t.client||""}|${t.text.trim()}`;
+      const isCarryOutcome = t.outcome === "Carry over" || t.outcome === "Blocked";
+      const isDone         = t.outcome === "Done" && sodTask.isCarryOver === true;
 
-      if (!taskMap[key]) {
+      if (isCarryOutcome && !taskMap[key]) {
         taskMap[key] = {
           client: t.client || "", text: t.text || "",
-          priority: t.priority || sodTask.priority || "Medium",
-          startDate: t.startDate || sodTask.startDate || origin,
-          dueDate:   t.dueDate   || sodTask.dueDate   || "",
-          endDate:   t.endDate   || "",
-          outcome:   t.outcome,
+          priority:      t.priority      || sodTask.priority  || "Medium",
+          startDate:     t.startDate     || sodTask.startDate || origin,
+          dueDate:       t.dueDate       || sodTask.dueDate   || "",
+          endDate:       "",
+          outcome:       t.outcome,
           blockerDetail: t.blockerDetail || "",
           blockerOwner:  t.blockerOwner  || "",
-          notes:     t.notes || "",
+          notes:         t.notes         || "",
         };
       }
-      // Upgrade to Done if found resolved in a later entry
-      if (taskMap[key] && t.outcome === "Done" && taskMap[key].outcome !== "Done") {
-        taskMap[key].outcome  = "Done";
-        taskMap[key].endDate  = t.endDate || e.date;
+      if (isCarryOutcome && taskMap[key] && taskMap[key].outcome !== "Done") {
+        taskMap[key].outcome       = t.outcome;
+        taskMap[key].notes         = t.notes         || taskMap[key].notes;
+        taskMap[key].blockerDetail = t.blockerDetail || taskMap[key].blockerDetail;
+        taskMap[key].blockerOwner  = t.blockerOwner  || taskMap[key].blockerOwner;
+        taskMap[key].dueDate       = t.dueDate       || sodTask.dueDate || taskMap[key].dueDate;
+      }
+      if (isDone && taskMap[key] && taskMap[key].outcome !== "Done") {
+        taskMap[key].outcome = "Done";
+        taskMap[key].endDate = t.endDate || e.date;
       }
     });
   });
@@ -481,23 +498,233 @@ function CarryOverSection({ entries }) {
   );
 }
 
+// ── Read-only Milestones panel ───────────────────────────────────────────────
+function MilestonesPanel({ memberName }) {
+  const [milestones, setMilestones] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [selected,   setSelected]   = useState(null);
+
+  useEffect(() => {
+    if (!memberName) return;
+    getDocs(query(collection(db, "milestones", memberName, "items"), orderBy("createdAt", "desc")))
+      .then(snap => {
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setMilestones(items);
+        if (items.length) setSelected(items[0].id);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [memberName]);
+
+  if (loading) return <Loading />;
+  if (milestones.length === 0) return (
+    <div style={{ textAlign:"center", padding:"48px 24px", color:"var(--faint)" }}>
+      <div style={{ fontSize:32, marginBottom:12 }}>🎯</div>
+      <div style={{ fontSize:13 }}>No milestones added yet</div>
+    </div>
+  );
+
+  const selectedMilestone = milestones.find(m => m.id === selected) || null;
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"240px 1fr", gap:12 }}>
+      {/* Left list */}
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        {milestones.map(m => {
+          const ss = MILESTONE_STATUS_STYLE[m.status] || MILESTONE_STATUS_STYLE["In progress"];
+          const isActive = selected === m.id;
+          const lastUpdate = [...(m.updates || [])].sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];
+          const isOverdue  = m.targetDate && m.targetDate < TODAY && m.status !== "Done";
+          return (
+            <div key={m.id} onClick={() => setSelected(m.id)}
+              style={{ padding:"10px 12px", borderRadius:10, cursor:"pointer",
+                border: isActive ? "2px solid var(--accent)" : "0.5px solid var(--border)",
+                background: isActive ? "var(--surface)" : "var(--bg)" }}>
+              <div style={{ fontSize:12, fontWeight:500, marginBottom:5, lineHeight:1.4 }}>{m.title}</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:6 }}>
+                <span style={{ fontSize:10, padding:"1px 7px", borderRadius:20, fontWeight:500,
+                  background:ss.bg, color:ss.color, border:`0.5px solid ${ss.bd}` }}>{m.status}</span>
+                {m.targetDate && (
+                  <span style={{ fontSize:10, fontFamily:"JetBrains Mono, monospace",
+                    color: isOverdue ? "var(--red)" : "var(--faint)" }}>{m.targetDate}</span>
+                )}
+              </div>
+              {lastUpdate && (
+                <div style={{ fontSize:11, color:"var(--faint)", marginTop:5,
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {lastUpdate.text || (lastUpdate.type === "created" ? "Milestone created" : lastUpdate.fieldLabel ? `${lastUpdate.fieldLabel} changed` : "")}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Right detail */}
+      {selectedMilestone && (() => {
+        const ss = MILESTONE_STATUS_STYLE[selectedMilestone.status] || MILESTONE_STATUS_STYLE["In progress"];
+        const isOverdue = selectedMilestone.targetDate && selectedMilestone.targetDate < TODAY && selectedMilestone.status !== "Done";
+        const updates   = [...(selectedMilestone.updates || [])].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+        const STATUS_PILL_MAP = MILESTONE_STATUS_STYLE;
+        return (
+          <div style={{ border:"0.5px solid var(--border)", borderRadius:12, overflow:"hidden",
+            background:"var(--surface)", display:"flex", flexDirection:"column" }}>
+            {/* Detail header */}
+            <div style={{ padding:"12px 16px", borderBottom:"0.5px solid var(--border)" }}>
+              <div style={{ fontSize:14, fontWeight:500, marginBottom:6, lineHeight:1.4 }}>
+                {selectedMilestone.title}
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                {selectedMilestone.client && (
+                  <span style={{ fontSize:10, padding:"1px 7px", borderRadius:20, fontWeight:500,
+                    background:"var(--blue-bg)", color:"var(--blue)", border:"0.5px solid var(--blue-bd)" }}>
+                    {selectedMilestone.client}
+                  </span>
+                )}
+                <span style={{ fontSize:10, padding:"1px 7px", borderRadius:20, fontWeight:500,
+                  background:ss.bg, color:ss.color, border:`0.5px solid ${ss.bd}` }}>
+                  {selectedMilestone.status}
+                </span>
+                {selectedMilestone.targetDate && (
+                  <span style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace",
+                    color: isOverdue ? "var(--red)" : "var(--muted)", fontWeight: isOverdue ? 500 : 400 }}>
+                    Due {selectedMilestone.targetDate}{isOverdue ? " !" : ""}
+                  </span>
+                )}
+              </div>
+              {selectedMilestone.description && (
+                <div style={{ fontSize:12, color:"var(--muted)", marginTop:8, lineHeight:1.6 }}>
+                  {selectedMilestone.description}
+                </div>
+              )}
+            </div>
+            {/* Updates timeline */}
+            <div style={{ flex:1, overflowY:"auto", padding:"12px 16px", maxHeight:380 }}>
+              {updates.length === 0 ? (
+                <div style={{ fontSize:12, color:"var(--faint)", textAlign:"center", padding:"24px 0" }}>No updates yet</div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+                  {updates.map((u, i) => {
+                    const dotColor = u.type === "update"       ? "var(--accent)"
+                                   : u.type === "field_change" ? "var(--amber)"
+                                   : u.type === "created"      ? "var(--green)"
+                                   : "var(--accent)";
+                    const ss2 = STATUS_PILL_MAP;
+                    const pill = (val, field) => {
+                      if (field === "status") {
+                        const s = ss2[val] || ss2["Not started"];
+                        return <span style={{ fontSize:10, padding:"1px 7px", borderRadius:20,
+                          fontWeight:500, background:s.bg, color:s.color, border:`0.5px solid ${s.bd}` }}>{val||"—"}</span>;
+                      }
+                      return <span style={{ fontSize:10, padding:"1px 7px", borderRadius:20, fontWeight:500,
+                        background:"var(--surface)", color:"var(--muted)", border:"0.5px solid var(--border)" }}>{val||"—"}</span>;
+                    };
+                    return (
+                      <div key={i} style={{ display:"flex", gap:10 }}>
+                        <div style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
+                          <div style={{ width:8, height:8, borderRadius:"50%", flexShrink:0,
+                            background:dotColor, marginTop:4 }} />
+                          {i < updates.length - 1 && (
+                            <div style={{ width:1, flex:1, background:"var(--border)", minHeight:16 }} />
+                          )}
+                        </div>
+                        <div style={{ flex:1, paddingBottom:14 }}>
+                          {(!u.type || u.type === "update") && (
+                            <div style={{ fontSize:12, color:"var(--text)", lineHeight:1.6 }}>{u.text}</div>
+                          )}
+                          {u.type === "field_change" && (
+                            <div>
+                              <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", marginBottom:2 }}>
+                                <span style={{ fontSize:11, color:"var(--muted)", fontWeight:500 }}>
+                                  {u.fieldLabel} changed
+                                </span>
+                                {pill(u.from, u.field)}
+                                <span style={{ fontSize:11, color:"var(--faint)" }}>→</span>
+                                {pill(u.to, u.field)}
+                              </div>
+                              {(u.field === "description" || u.field === "title") && u.to && (
+                                <div style={{ fontSize:11, color:"var(--muted)", fontStyle:"italic",
+                                  lineHeight:1.5, marginTop:2 }}>"{u.to}"</div>
+                              )}
+                            </div>
+                          )}
+                          {u.type === "created" && (
+                            <span style={{ fontSize:11, padding:"1px 8px", borderRadius:20,
+                              fontWeight:500, background:"var(--green-bg)", color:"var(--green)",
+                              border:"0.5px solid var(--green-bd)" }}>Milestone created</span>
+                          )}
+                          <div style={{ fontSize:10, fontFamily:"JetBrains Mono, monospace",
+                            color:"var(--faint)", marginTop:3 }}>{fmt(u.date)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 // ── Filterable daily task history table ───────────────────────────────────────
 function TaskHistory({ entries }) {
   const [outcomeFilter, setOutcomeFilter] = useState("all");
   const [clientFilter,  setClientFilter]  = useState("all");
 
-  const normed   = entries.map(normaliseEntry);
-  const allTasks = normed.flatMap(e =>
+  const normed = entries.map(normaliseEntry);
+
+  // Build raw task list with eodMissing flag
+  const rawTasks = normed.flatMap(e =>
     (e.tasks || [])
       .filter(t => t.text?.trim() && !t.isCarryOver)
-      .map(t => ({ ...t, date: e.date }))
+      .map(t => ({ ...t, date: e.date, _eodMissing: e.eodMissing, _entryDate: e.date }))
   );
 
+  // Count IP days per client|text key
+  const ipDaysMap = {};
+  rawTasks.forEach(t => {
+    if ((t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing) {
+      const key = `${t.client||""}|${t.text.trim()}`;
+      ipDaysMap[key] = (ipDaysMap[key] || 0) + 1;
+    }
+  });
+
+  // Track latest IP entry per key
+  const ipLatest = {};
+  rawTasks.forEach(t => {
+    if ((t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing) {
+      const key = `${t.client||""}|${t.text.trim()}`;
+      if (!ipLatest[key] || t._entryDate > ipLatest[key]._entryDate) ipLatest[key] = t;
+    }
+  });
+
+  // Deduplicate IP rows — keep latest occurrence only
+  const ipSeen = new Set();
+  const allTasks = rawTasks
+    .filter(t => {
+      if ((t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing) {
+        const key = `${t.client||""}|${t.text.trim()}`;
+        if (ipSeen.has(key)) return false;
+        ipSeen.add(key); return true;
+      }
+      return true;
+    })
+    .map(t => {
+      const key = `${t.client||""}|${t.text.trim()}`;
+      const base = (t.outcome === "In Progress" || t.status === "In Progress") && !t._eodMissing
+        ? (ipLatest[key] || t) : t;
+      return { ...base, _ipDays: ipDaysMap[key] || 0 };
+    });
+
   const clients  = [...new Set(allTasks.map(t => t.client).filter(Boolean))].sort();
-  const outcomes = ["Done", "Carry over", "Blocked", "In Progress"];
+  const outcomes = ["Done", "Carry over", "Blocked", "In Progress", "EOD pending"];
 
   const filtered = allTasks.filter(t => {
-    const matchOutcome = outcomeFilter === "all" || (t.status || t.outcome) === outcomeFilter;
+    const effectiveStatus = t._eodMissing ? "EOD pending" : (t.status || t.outcome || "In Progress");
+    const matchOutcome = outcomeFilter === "all" || effectiveStatus === outcomeFilter;
     const matchClient  = clientFilter  === "all" || t.client === clientFilter;
     return matchOutcome && matchClient;
   });
@@ -548,23 +775,36 @@ function TaskHistory({ entries }) {
               {filtered.slice(0,50).map((t, i) => {
                 const overdue = t.dueDate && t.dueDate < TODAY && (t.status||t.outcome) !== "Done";
                 return (
-                  <tr key={i}>
-                    <td style={{ fontFamily:"JetBrains Mono, monospace", fontSize:11, color:"var(--muted)" }}>{fmt(t.date)}</td>
+                  <tr key={i} style={{ background: t._eodMissing ? "var(--bg)" : "transparent" }}>
+                    <td style={{ fontFamily:"JetBrains Mono, monospace", fontSize:11, color:"var(--muted)", whiteSpace:"nowrap" }}>{fmt(t.date)}</td>
                     <td><ClientPill client={t.client} /></td>
                     <td><PriorityPill priority={t.priority} /></td>
                     <td style={{ fontSize:12 }}>{t.text}</td>
-                    <td style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace", color:"var(--muted)" }}>{t.startDate||"—"}</td>
+                    <td style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace", color:"var(--muted)", whiteSpace:"nowrap" }}>{t.startDate||"—"}</td>
                     <td>
                       {t.dueDate
                         ? <span style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace",
-                            color: overdue ? "var(--red)" : "var(--muted)" }}>
+                            color: overdue ? "var(--red)" : "var(--muted)", whiteSpace:"nowrap" }}>
                             {t.dueDate}{overdue ? " !" : ""}
                           </span>
                         : <span style={{ color:"var(--faint)", fontSize:11 }}>—</span>}
                     </td>
                     <td style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace",
-                      color: t.endDate ? "var(--green)" : "var(--faint)" }}>{t.endDate||"—"}</td>
-                    <td><OutcomePill outcome={t.status||t.outcome} /></td>
+                      color: t.endDate ? "var(--green)" : "var(--faint)", whiteSpace:"nowrap" }}>{t.endDate||"—"}</td>
+                    <td style={{ whiteSpace:"nowrap" }}>
+                      {t._eodMissing
+                        ? <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:500,
+                            background:"var(--surface)", color:"var(--faint)", border:"0.5px solid var(--border)" }}>EOD pending</span>
+                        : <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
+                            <OutcomePill outcome={t.status||t.outcome} />
+                            {t._ipDays > 0 && (
+                              <span style={{ fontSize:10, padding:"1px 6px", borderRadius:20,
+                                background:"var(--surface)", color:"var(--muted)", border:"0.5px solid var(--border)" }}>
+                                {t._ipDays}d
+                              </span>
+                            )}
+                          </span>}
+                    </td>
                   </tr>
                 );
               })}
@@ -621,14 +861,21 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const topClient = Object.entries(clientCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—";
   const totalTasks = allTasks.length;
 
-  // Streak
-  let streak = 0;
-  const d = new Date();
-  const sorted = [...entryDates].sort((a,b)=>b.localeCompare(a));
-  for (const date of sorted) {
-    const exp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    if (date === exp) { streak++; d.setDate(d.getDate()-1); } else break;
-  }
+  // Streak — weekend-aware (skip Sat/Sun)
+  const calcStreak = () => {
+    let s = 0;
+    const d = new Date();
+    while (true) {
+      if (d.getDay() === 0) { d.setDate(d.getDate()-1); continue; } // skip Sun
+      if (d.getDay() === 6) { d.setDate(d.getDate()-1); continue; } // skip Sat
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      if (iso === TODAY && !entryDates.includes(iso)) { d.setDate(d.getDate()-1); continue; }
+      if (entryDates.includes(iso)) { s++; d.setDate(d.getDate()-1); }
+      else break;
+    }
+    return s;
+  };
+  const streak = calcStreak();
 
   // Today's live stats for header
   const todaySod = todayEntry?.sod;
@@ -641,6 +888,8 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const todayDone    = todayValid.filter(t => t.outcome === "Done").length;
   const todayBlocked = todayValid.filter(t => t.outcome === "Blocked").length;
   const todayPct     = todayEod?.submittedAt && todayValid.length ? Math.round(todayDone / todayValid.length * 100) : null;
+
+  const [profileTab, setProfileTab] = useState("overview"); // "overview" | "milestones"
 
   const navigateCal = (dir) => {
     let m = calMonth + dir, y = calYear;
@@ -731,6 +980,27 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
         </div>
       </div>
 
+      {/* ── Tab switcher ── */}
+      <div style={{ display:"flex", gap:6, marginBottom:16 }}>
+        {[
+          { key:"overview",   label:"Overview"   },
+          { key:"milestones", label:"🎯 Milestones" },
+        ].map(t => (
+          <button key={t.key} onClick={() => setProfileTab(t.key)}
+            style={{ fontSize:12, padding:"5px 14px", borderRadius:8, cursor:"pointer",
+              fontFamily:"inherit", border:"0.5px solid",
+              background: profileTab === t.key ? "var(--accent)" : "var(--surface)",
+              color: profileTab === t.key ? "#fff" : "var(--muted)",
+              borderColor: profileTab === t.key ? "var(--accent)" : "var(--border)" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {profileTab === "milestones" && <MilestonesPanel memberName={memberName} />}
+
+      {profileTab === "overview" && <>
+
       {/* ── Improvement 2: Stats split this month vs YTD ── */}
       <div className="form-grid-2 mb-12">
         <StatsCard label="This month" sublabel={`${MONTHS[currentMonth]} ${currentYear}`} entries={monthEntries} allTasks={allTasks} />
@@ -773,6 +1043,8 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
 
       {/* ── Improvement 4: Filterable daily task history ── */}
       <TaskHistory entries={entries} />
+
+      </> /* end profileTab === "overview" */}
     </div>
   );
 }
