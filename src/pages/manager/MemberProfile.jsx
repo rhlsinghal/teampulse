@@ -1095,22 +1095,53 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
 
       {profileTab === "overview" && <>
 
-      {/* ── 5 metric cards ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))", gap:8, marginBottom:12 }}>
-        {[
-          { val: monthEntries.length, label: "Days this month", sub: `of ${new Date(currentYear,currentMonth+1,0).getDate()} working days`, color:"var(--accent)" },
-          { val: `${monthPct}%`,      label: "Completion rate",  sub: `${monthDone} of ${monthTotal} tasks`,  color:"var(--green)"  },
-          { val: monthTotal,          label: "Tasks tracked",    sub: "excl. recurring",                      color:"var(--text)"   },
-          { val: monthBlockers.length, label:"Blockers raised",  sub: monthBlockers.length > 0 ? "this month" : "clean month", color: monthBlockers.length > 0 ? "var(--red)" : "var(--green)" },
-          { val: BANDWIDTH[monthAvgBw]?.label || "—", label:"Avg bandwidth", sub:"this month", color: BW_STYLES[monthAvgBw]?.color || "var(--muted)", small:true },
-        ].map((m,i) => (
-          <div key={i} style={{ background:"var(--surface)", borderRadius:8, padding:"10px", textAlign:"center", border:"0.5px solid var(--border)" }}>
-            <div style={{ fontSize: m.small ? 15 : 22, fontWeight:500, color:m.color, lineHeight:1.1 }}>{m.val}</div>
-            <div style={{ fontSize:10, color:"var(--muted)", marginTop:4 }}>{m.label}</div>
-            <div style={{ fontSize:10, color:m.color, marginTop:2, fontWeight:500 }}>{m.sub}</div>
+      {/* ── Month to date + Year to date stats ── */}
+      {(() => {
+        const ytdNormed = entries.map(normaliseEntry);
+        const ytdTasks  = ytdNormed.flatMap(e => (e.tasks||[]).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing));
+        const ytdDone   = ytdTasks.filter(t => t.status==="Done"||t.outcome==="Done").length;
+        const ytdTotal  = ytdTasks.length;
+        const ytdPct    = ytdTotal ? Math.round(ytdDone/ytdTotal*100) : 0;
+        const ytdBlock  = ytdNormed.filter(e => e.blockers?.trim()).length;
+        const ytdBwV    = ytdNormed.map(e=>e.bandwidth).filter(Boolean);
+        const ytdAvgBw  = ytdBwV.length ? Math.round(ytdBwV.reduce((a,b)=>a+b,0)/ytdBwV.length) : 3;
+        const Row = ({ label, items }) => (
+          <div style={{ display:"grid", gridTemplateColumns:"100px repeat(5,minmax(0,1fr))", gap:0,
+            border:"0.5px solid var(--border)", borderRadius:8, overflow:"hidden", marginBottom:8 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+              background:"var(--bg)", borderRight:"0.5px solid var(--border)",
+              padding:"8px 10px", fontSize:10, fontWeight:500, textTransform:"uppercase",
+              letterSpacing:"0.06em", color:"var(--faint)", textAlign:"center" }}>
+              {label}
+            </div>
+            {items.map((m,i) => (
+              <div key={i} style={{ padding:"8px 6px", textAlign:"center", background:"var(--surface)",
+                borderLeft: i>0 ? "0.5px solid var(--border)" : "none" }}>
+                <div style={{ fontSize: m.small?14:20, fontWeight:500, color:m.color, lineHeight:1.1 }}>{m.val}</div>
+                <div style={{ fontSize:9, color:"var(--muted)", marginTop:3 }}>{m.label}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+        return (
+          <div style={{ marginBottom:12 }}>
+            <Row label="This month" items={[
+              { val: monthEntries.length, label:"Days submitted",  color:"var(--accent)" },
+              { val: `${monthPct}%`,      label:"Completion",      color:"var(--green)"  },
+              { val: monthTotal,          label:"Tasks tracked",   color:"var(--text)"   },
+              { val: monthBlockers.length,label:"Blockers",        color: monthBlockers.length>0?"var(--red)":"var(--green)" },
+              { val: BANDWIDTH[monthAvgBw]?.label||"—", label:"Avg bandwidth", color:BW_STYLES[monthAvgBw]?.color||"var(--muted)", small:true },
+            ]} />
+            <Row label="Year to date" items={[
+              { val: entries.length,  label:"Days submitted",  color:"var(--accent)" },
+              { val: `${ytdPct}%`,    label:"Completion",      color:"var(--green)"  },
+              { val: ytdTotal,        label:"Tasks tracked",   color:"var(--text)"   },
+              { val: ytdBlock,        label:"Blockers",        color: ytdBlock>0?"var(--red)":"var(--green)" },
+              { val: BANDWIDTH[ytdAvgBw]?.label||"—", label:"Avg bandwidth", color:BW_STYLES[ytdAvgBw]?.color||"var(--muted)", small:true },
+            ]} />
+          </div>
+        );
+      })()}
 
       {/* ── Today's update ── */}
       {todayEntry && <TodaySection entry={todayEntry} />}
@@ -1286,12 +1317,12 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
             </div>
           </div>
           <div className="card-body" style={{ padding:"8px 12px" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:1, marginBottom:2 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,minmax(0,22px))", gap:2, marginBottom:2, justifyContent:"start" }}>
               {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
                 <div key={d} style={{ textAlign:"center", fontSize:9, color:"var(--faint)" }}>{d}</div>
               ))}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:1 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,minmax(0,22px))", gap:2, justifyContent:"start" }}>
               {(() => {
                 const cells = [];
                 for (let i = 0; i < getFirstDayOfMonth(calYear,calMonth); i++) cells.push(null);
