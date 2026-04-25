@@ -832,6 +832,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const [loading,    setLoading]    = useState(true);
   const [calYear,    setCalYear]    = useState(new Date().getFullYear());
   const [calMonth,   setCalMonth]   = useState(new Date().getMonth());
+  const [profileTab, setProfileTab] = useState("overview"); // "overview" | "milestones"
   const now          = new Date();
   const currentYear  = now.getFullYear();
   const currentMonth = now.getMonth();
@@ -888,8 +889,6 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const todayDone    = todayValid.filter(t => t.outcome === "Done").length;
   const todayBlocked = todayValid.filter(t => t.outcome === "Blocked").length;
   const todayPct     = todayEod?.submittedAt && todayValid.length ? Math.round(todayDone / todayValid.length * 100) : null;
-
-  const [profileTab, setProfileTab] = useState("overview"); // "overview" | "milestones"
 
   const navigateCal = (dir) => {
     let m = calMonth + dir, y = calYear;
