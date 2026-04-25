@@ -3,6 +3,7 @@ import { avatarColor, initials, BANDWIDTH, BW_STYLES } from "../../utils/constan
 import { fmt, TODAY, MONTHS, MONTHS_SHORT, getDaysInMonth, getFirstDayOfMonth, isoDate } from "../../utils/dates";
 import { Loading } from "../../components/index.jsx";
 import { loadEntriesInRange } from "../../hooks/useHistory";
+import { useRecurring, scheduleLabel } from "../../hooks/useRecurring";
 import { db } from "../../firebase";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { normaliseEntry } from "../../utils/aggregator";
@@ -839,28 +840,123 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
   const monthKey     = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
 
   useEffect(() => {
-    loadEntriesInRange(memberName, `${currentYear}-01-01`, TODAY).then(res => {
+    // Load 6 months back for trend view
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    const startStr = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth()+1).padStart(2,"0")}-01`;
+    loadEntriesInRange(memberName, startStr, TODAY).then(res => {
       setEntries(res); setLoading(false);
     });
   }, [memberName]);
 
   if (loading) return <div className="main-content"><Loading /></div>;
 
+  const { tasks: recurringTasks } = useRecurring(memberName);
   const color      = avatarColor(memberName);
   const todayEntry = entries.find(e => e.date === TODAY) || null;
 
   // Shared normalised tasks for stats
   const normed    = entries.map(normaliseEntry);
   const allTasks  = normed.flatMap(e => e.tasks || []).filter(t => t.text?.trim() && !t.isRecurring);
-  const monthEntries = entries.filter(e => e.date?.startsWith(monthKey));
+  const monthEntries  = entries.filter(e => e.date?.startsWith(monthKey));
+  const monthNormed   = monthEntries.map(normaliseEntry);
+  const monthTasks    = monthNormed.flatMap(e => e.tasks || []).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing);
+  const monthDone     = monthTasks.filter(t => t.status === "Done" || t.outcome === "Done").length;
+  const monthTotal    = monthTasks.length;
+  const monthPct      = monthTotal ? Math.round(monthDone / monthTotal * 100) : 0;
+  const monthBlockers = monthNormed.filter(e => e.blockers?.trim());
+  const monthBwVals   = monthNormed.map(e => e.bandwidth).filter(Boolean);
+  const monthAvgBw    = monthBwVals.length ? Math.round(monthBwVals.reduce((a,b)=>a+b,0)/monthBwVals.length) : 3;
+
+  // EOD submission rate for current month
+  const monthWithSod   = monthEntries.filter(e => e.sod?.submittedAt);
+  const monthWithEod   = monthEntries.filter(e => e.eod?.submittedAt);
+  const eodMissingDays = monthWithSod.filter(e => !e.eod?.submittedAt);
+
+  // Week-by-week buckets for current month
+  const buildWeeks = () => {
+    const weeks = [];
+    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+    let d = new Date(currentYear, currentMonth, 1);
+    while (d.getMonth() === currentMonth) {
+      if (d.getDay() === 1 || d.getDate() === 1) {
+        const wStart = new Date(d);
+        const wEnd   = new Date(d); wEnd.setDate(wEnd.getDate() + (7 - (wEnd.getDay() || 7)));
+        if (wEnd.getMonth() !== currentMonth) wEnd.setDate(lastDay);
+        weeks.push({ start: wStart, end: wEnd, entries: [] });
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    const seen = new Set();
+    const deduped = weeks.filter(w => { const k = w.start.getDate(); if(seen.has(k))return false; seen.add(k); return true; });
+    monthEntries.forEach(e => {
+      const ed = new Date(e.date);
+      const w  = deduped.find(w => ed >= w.start && ed <= w.end);
+      if (w) w.entries.push(e);
+    });
+    return deduped;
+  };
+  const weeks = buildWeeks();
+
+  // Bandwidth pattern — per submitted day this month
+  const bwPattern = monthEntries
+    .filter(e => e.sod?.submittedAt)
+    .sort((a,b) => a.date.localeCompare(b.date))
+    .map(e => ({ date: e.date, bw: e.sod?.bandwidth || 3 }));
+
+  // Recurring compliance for current month
+  const recurringCompliance = (recurringTasks || []).filter(r => r.active !== false).map(r => {
+    const label   = scheduleLabel(r);
+    // Count days in month this task was scheduled
+    const daysInM = new Date(currentYear, currentMonth + 1, 0).getDate();
+    let scheduled = 0;
+    for (let d = 1; d <= daysInM; d++) {
+      const date  = new Date(currentYear, currentMonth, d);
+      const dow   = date.getDay();
+      const iso   = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      if (iso > TODAY) continue;
+      let isScheduled = false;
+      if (r.schedule === "daily") isScheduled = true;
+      else if (r.schedule === "weekdays") isScheduled = dow >= 1 && dow <= 5;
+      else if (r.schedule === "weekly") isScheduled = (r.days || []).includes(dow);
+      else if (r.schedule === "monthly") isScheduled = d === (r.dayOfMonth || 1);
+      if (isScheduled) scheduled++;
+    }
+    // Count days this task was actually submitted (SOD has this recurring task)
+    const done = monthEntries.filter(e => {
+      return (e.sod?.tasks || []).some(t => t.recurringId === r.id || (t.isRecurring && t.text === r.text));
+    }).length;
+    return { text: r.text, client: r.client, scheduledDays: scheduled, doneDays: Math.min(done, scheduled) };
+  }).filter(r => r.scheduledDays > 0);
+
+  // 6-month trend data
+  const sixMonthTrend = (() => {
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d   = new Date(currentYear, currentMonth - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      const lbl = d.toLocaleDateString("en-US", { month: "short" });
+      const ents = entries.filter(e => e.date?.startsWith(key));
+      const nrm  = ents.map(normaliseEntry);
+      const tks  = nrm.flatMap(e => e.tasks||[]).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing);
+      const done = tks.filter(t => t.status==="Done"||t.outcome==="Done").length;
+      const pct  = tks.length ? Math.round(done/tks.length*100) : 0;
+      months.push({ label: lbl, pct, tasks: tks.length, days: ents.length });
+    }
+    return months;
+  })();
 
   // Header stats
   const entryDates   = entries.map(e => e.date);
   const blockerDates = normed.filter(e => e.blockers?.trim()).map(e => e.date);
   const clientCounts = {};
   allTasks.forEach(t => { const c = t.client || "Internal"; clientCounts[c] = (clientCounts[c] || 0) + 1; });
-  const topClient = Object.entries(clientCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—";
+  const topClient  = Object.entries(clientCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—";
   const totalTasks = allTasks.length;
+  // Month client counts
+  const monthClientCounts = {};
+  monthTasks.forEach(t => { const c = t.client||"Internal"; monthClientCounts[c]=(monthClientCounts[c]||0)+1; });
 
   // Streak — weekend-aware (skip Sat/Sun)
   const calcStreak = () => {
@@ -1000,37 +1096,294 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
 
       {profileTab === "overview" && <>
 
-      {/* ── Improvement 2: Stats split this month vs YTD ── */}
-      <div className="form-grid-2 mb-12">
-        <StatsCard label="This month" sublabel={`${MONTHS[currentMonth]} ${currentYear}`} entries={monthEntries} allTasks={allTasks} />
-        <StatsCard label="Year to date" sublabel={`Jan – ${MONTHS_SHORT[currentMonth]} ${currentYear}`} entries={entries} allTasks={allTasks} />
+      {/* ── 5 metric cards ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))", gap:8, marginBottom:12 }}>
+        {[
+          { val: monthEntries.length, label: "Days this month", sub: `of ${new Date(currentYear,currentMonth+1,0).getDate()} working days`, color:"var(--accent)" },
+          { val: `${monthPct}%`,      label: "Completion rate",  sub: `${monthDone} of ${monthTotal} tasks`,  color:"var(--green)"  },
+          { val: monthTotal,          label: "Tasks tracked",    sub: "excl. recurring",                      color:"var(--text)"   },
+          { val: monthBlockers.length, label:"Blockers raised",  sub: monthBlockers.length > 0 ? "this month" : "clean month", color: monthBlockers.length > 0 ? "var(--red)" : "var(--green)" },
+          { val: BANDWIDTH[monthAvgBw]?.label || "—", label:"Avg bandwidth", sub:"this month", color: BW_STYLES[monthAvgBw]?.color || "var(--muted)", small:true },
+        ].map((m,i) => (
+          <div key={i} style={{ background:"var(--surface)", borderRadius:8, padding:"10px", textAlign:"center", border:"0.5px solid var(--border)" }}>
+            <div style={{ fontSize: m.small ? 15 : 22, fontWeight:500, color:m.color, lineHeight:1.1 }}>{m.val}</div>
+            <div style={{ fontSize:10, color:"var(--muted)", marginTop:4 }}>{m.label}</div>
+            <div style={{ fontSize:10, color:m.color, marginTop:2, fontWeight:500 }}>{m.sub}</div>
+          </div>
+        ))}
       </div>
 
-      {/* ── Improvement 3: Today's update ── */}
+      {/* ── Today's update ── */}
       {todayEntry && <TodaySection entry={todayEntry} />}
 
-      {/* Heatmap + client distribution */}
-      <div className="form-grid-2 mb-12" style={{ gap: 10 }}>
-        <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-header" style={{ padding: "7px 12px" }}><span className="card-title">Activity</span></div>
-          <div className="card-body" style={{ padding: "10px 12px" }}>
-            <MiniHeatmap year={calYear} month={calMonth}
-              entryDates={entryDates} blockerDates={blockerDates} onNavigate={navigateCal} />
+      {/* ── 3-column: work distribution + EOD rate + recurring ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
+        {/* Work distribution */}
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}>
+            <span className="card-title">Work distribution</span>
+            <span className="card-meta">{MONTHS[currentMonth]}</span>
           </div>
-        </div>
-        <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-header" style={{ padding: "7px 12px" }}><span className="card-title">Work distribution</span><span className="card-meta">This year</span></div>
-          <div className="card-body" style={{ padding: "10px 12px" }}>
-            {Object.entries(clientCounts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c, n]) => (
-              <div key={c} style={{ marginBottom: 7 }}>
+          <div className="card-body" style={{ padding:"10px 12px" }}>
+            {Object.entries(monthClientCounts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,n]) => (
+              <div key={c} style={{ marginBottom:8 }}>
                 <div className="flex justify-between mb-4">
                   <span className="text-sm font-medium">{c}</span>
-                  <span className="text-xs text-muted">{n} tasks · {totalTasks ? Math.round(n/totalTasks*100) : 0}%</span>
+                  <span className="text-xs text-muted">{n} · {monthTotal ? Math.round(n/monthTotal*100) : 0}%</span>
                 </div>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${totalTasks ? n/totalTasks*100 : 0}%`,
-                    background: c.toLowerCase() === "internal" ? "var(--faint)" : "var(--accent)" }} />
+                  <div className="progress-fill" style={{ width:`${monthTotal ? n/monthTotal*100 : 0}%`,
+                    background: c.toLowerCase()==="internal" ? "var(--faint)" : "var(--accent)" }} />
                 </div>
+              </div>
+            ))}
+            {Object.keys(monthClientCounts).length === 0 && (
+              <span style={{ fontSize:12, color:"var(--faint)" }}>No tasks this month</span>
+            )}
+          </div>
+        </div>
+
+        {/* EOD submission rate */}
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}><span className="card-title">EOD submission rate</span></div>
+          <div className="card-body" style={{ padding:"10px 12px" }}>
+            {(() => {
+              const total  = monthWithSod.length;
+              const done   = monthWithEod.length;
+              const pct    = total ? Math.round(done/total*100) : 0;
+              const col    = pct >= 90 ? "var(--green)" : pct >= 70 ? "var(--amber)" : "var(--red)";
+              return (
+                <>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:6 }}>
+                    <span style={{ fontSize:22, fontWeight:500, color:col }}>{pct}%</span>
+                    <span style={{ fontSize:11, color:"var(--muted)" }}>{done} of {total} days</span>
+                  </div>
+                  <div style={{ height:6, borderRadius:3, background:"var(--border)", overflow:"hidden", marginBottom:8 }}>
+                    <div style={{ height:"100%", borderRadius:3, width:`${pct}%`, background:col }} />
+                  </div>
+                  {eodMissingDays.length > 0 ? (
+                    <>
+                      <div style={{ fontSize:11, color:"var(--muted)", marginBottom:6 }}>
+                        {eodMissingDays.length} day{eodMissingDays.length !== 1 ? "s" : ""} missing EOD
+                      </div>
+                      {eodMissingDays.slice(0,3).map((e,i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:6, padding:"3px 0",
+                          borderBottom: i < Math.min(eodMissingDays.length,3)-1 ? "0.5px solid var(--border)" : "none" }}>
+                          <span style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace", color:"var(--muted)" }}>{e.date}</span>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div style={{ fontSize:11, color:"var(--green)" }}>All days EOD submitted</div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* Recurring compliance */}
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}><span className="card-title">Recurring compliance</span></div>
+          <div className="card-body" style={{ padding:"10px 12px" }}>
+            {recurringCompliance.length === 0 ? (
+              <span style={{ fontSize:12, color:"var(--faint)" }}>No recurring tasks</span>
+            ) : recurringCompliance.map((r,i) => {
+              const pct = r.scheduledDays ? Math.round(r.doneDays/r.scheduledDays*100) : 0;
+              const col = pct===100 ? "var(--green)" : pct>=75 ? "var(--accent)" : pct>=50 ? "var(--amber)" : "var(--red)";
+              return (
+                <div key={i} style={{ marginBottom:8 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                    <span style={{ fontSize:11, fontWeight:500 }}>{r.client ? `${r.client} · ` : ""}{r.text}</span>
+                    <span style={{ fontSize:11, fontWeight:500, color:col }}>{r.doneDays}/{r.scheduledDays}</span>
+                  </div>
+                  <div style={{ height:5, borderRadius:3, background:"var(--border)", overflow:"hidden" }}>
+                    <div style={{ height:"100%", borderRadius:3, width:`${pct}%`, background:col }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2-column: week-by-week + blockers ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+        {/* Week-by-week */}
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}>
+            <span className="card-title">Week-by-week</span>
+            <span className="card-meta">{MONTHS[currentMonth]} {currentYear}</span>
+          </div>
+          <div className="card-body" style={{ padding:"8px 12px" }}>
+            {weeks.filter(w => w.entries.length > 0).map((w, wi) => {
+              const wEod   = w.entries.flatMap(e => (e.eod?.tasks||[]).filter(t=>t.text?.trim()));
+              const wSod   = w.entries.flatMap(e => (e.sod?.tasks||[]).filter(t=>t.text?.trim()&&!t.isRecurring));
+              const wDone  = wEod.filter(t=>t.outcome==="Done").length;
+              const wCarry = wEod.filter(t=>t.outcome==="Carry over").length;
+              const wBlock = wEod.filter(t=>t.outcome==="Blocked").length;
+              const wTotal = wSod.length;
+              const wPct   = wTotal ? Math.round(wDone/wTotal*100) : 0;
+              const sd = w.start.getDate(), ed = Math.min(w.end.getDate(), new Date(currentYear,currentMonth+1,0).getDate());
+              return (
+                <div key={wi} style={{ display:"grid", gridTemplateColumns:"72px 1fr 110px", alignItems:"center",
+                  gap:10, padding:"5px 0", borderBottom:"0.5px solid var(--border)" }}>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--text)", fontWeight:500 }}>Week {wi+1}</div>
+                    <div style={{ fontSize:9, color:"var(--faint)" }}>{MONTHS[currentMonth].slice(0,3)} {sd}–{ed}</div>
+                  </div>
+                  <div style={{ height:6, borderRadius:3, background:"var(--border)", overflow:"hidden" }}>
+                    <div style={{ width:`${wPct}%`, height:"100%", borderRadius:3,
+                      background: wPct===100?"var(--green)":wPct>=75?"var(--accent)":"var(--amber)" }} />
+                  </div>
+                  <div style={{ fontSize:10, color:"var(--muted)", textAlign:"right" }}>
+                    {wTotal}t · {wDone}✓
+                    {wCarry > 0 && <span style={{ color:"var(--amber)" }}> · {wCarry}↩</span>}
+                    {wBlock > 0 && <span style={{ color:"var(--red)" }}> · {wBlock}⚑</span>}
+                  </div>
+                </div>
+              );
+            })}
+            {weeks.filter(w=>w.entries.length>0).length===0 && (
+              <div style={{ fontSize:12, color:"var(--faint)", textAlign:"center", padding:"12px 0" }}>No entries this month</div>
+            )}
+          </div>
+        </div>
+
+        {/* Blockers this month */}
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}>
+            <span className="card-title">Blockers this month</span>
+            <span style={{ fontSize:11, color:"var(--muted)" }}>{monthBlockers.length} raised</span>
+          </div>
+          <div className="card-body" style={{ padding:"8px 12px" }}>
+            {monthBlockers.length === 0 ? (
+              <div style={{ fontSize:12, color:"var(--faint)", textAlign:"center", padding:"12px 0" }}>No blockers this month</div>
+            ) : monthNormed.filter(e=>e.blockers?.trim()).map((e,i) => (
+              <div key={i} style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 0",
+                borderBottom:"0.5px solid var(--border)" }}>
+                <span style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace", color:"var(--muted)", minWidth:56, flexShrink:0 }}>{e.date}</span>
+                <span style={{ fontSize:11, color:"var(--text)", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.blockers}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2-column: compact activity calendar + bandwidth pattern ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+        {/* Compact activity calendar */}
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}>
+            <span className="card-title">Activity</span>
+            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <button onClick={() => navigateCal(-1)} style={{ fontSize:11, padding:"1px 7px", borderRadius:5,
+                border:"0.5px solid var(--border)", background:"var(--bg)", cursor:"pointer", color:"var(--muted)" }}>‹</button>
+              <span style={{ fontSize:11, color:"var(--muted)" }}>
+                {new Date(calYear,calMonth,1).toLocaleDateString("en-US",{month:"short",year:"numeric"})}
+              </span>
+              <button onClick={() => navigateCal(1)} style={{ fontSize:11, padding:"1px 7px", borderRadius:5,
+                border:"0.5px solid var(--border)", background:"var(--bg)", cursor:"pointer", color:"var(--muted)" }}>›</button>
+            </div>
+          </div>
+          <div className="card-body" style={{ padding:"8px 12px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:1, marginBottom:2 }}>
+              {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
+                <div key={d} style={{ textAlign:"center", fontSize:9, color:"var(--faint)" }}>{d}</div>
+              ))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:1 }}>
+              {(() => {
+                const cells = [];
+                for (let i = 0; i < getFirstDayOfMonth(calYear,calMonth); i++) cells.push(null);
+                for (let d = 1; d <= getDaysInMonth(calYear,calMonth); d++) cells.push(d);
+                return cells.map((d,i) => {
+                  if (!d) return <div key={i} />;
+                  const iso = isoDate(calYear,calMonth,d);
+                  const has = entryDates.includes(iso);
+                  const blk = blockerDates.includes(iso);
+                  const fut = iso > TODAY;
+                  return (
+                    <div key={i} style={{ aspectRatio:"1", borderRadius:3, fontSize:9, color:"var(--faint)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      background: fut?"transparent":has?(blk?"var(--red-bg)":"#5b5ff540"):"var(--bg)",
+                      border: fut?"none":has?(blk?"0.5px solid var(--red-bd)":"none"):"0.5px solid var(--border)" }}>
+                      {d}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:6 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
+                <div style={{ width:8, height:8, borderRadius:2, background:"#5b5ff540" }} />Submitted
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
+                <div style={{ width:8, height:8, borderRadius:2, background:"var(--red-bg)", border:"0.5px solid var(--red-bd)" }} />Blocker
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bandwidth pattern */}
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}>
+            <span className="card-title">Bandwidth pattern</span>
+            <span className="card-meta">per day this month</span>
+          </div>
+          <div className="card-body" style={{ padding:"10px 12px" }}>
+            {bwPattern.length === 0 ? (
+              <div style={{ fontSize:12, color:"var(--faint)", textAlign:"center", padding:"20px 0" }}>No data</div>
+            ) : (
+              <>
+                <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:72, marginBottom:8 }}>
+                  {bwPattern.map((p,i) => {
+                    const h = p.bw===3?35:p.bw===4?55:p.bw===5?75:35;
+                    const c = p.bw===3?"var(--green)":p.bw===4?"var(--amber)":"var(--red)";
+                    return <div key={i} style={{ flex:1, height:`${h}%`, background:c, borderRadius:"2px 2px 0 0", minWidth:4 }} />;
+                  })}
+                </div>
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                  {[["var(--green)","Balanced"],["var(--amber)","Heavy"],["var(--red)","Overloaded"]].map(([c,l]) => (
+                    <div key={l} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
+                      <div style={{ width:8, height:8, borderRadius:2, background:c }} />{l}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 6-month trend ── */}
+      <div className="card mb-12">
+        <div className="card-header" style={{ padding:"7px 12px" }}>
+          <span className="card-title">6-month trend</span>
+          <span className="card-meta">completion % and task volume</span>
+        </div>
+        <div className="card-body" style={{ padding:"10px 14px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(6,minmax(0,1fr))", gap:8 }}>
+            {sixMonthTrend.map((m,i) => {
+              const maxT = Math.max(...sixMonthTrend.map(x=>x.tasks), 1);
+              const col  = m.pct>=85?"var(--green)":m.pct>=70?"var(--amber)":"var(--red)";
+              return (
+                <div key={i} style={{ textAlign:"center" }}>
+                  <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"center", gap:3, height:60, marginBottom:5 }}>
+                    <div style={{ width:13, height:`${Math.max(m.tasks/maxT*60,4)}px`, background:"var(--blue-bd)", borderRadius:"2px 2px 0 0" }} />
+                    <div style={{ width:13, height:`${Math.max(m.pct/100*60,4)}px`, background:col, borderRadius:"2px 2px 0 0" }} />
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:500, color:col }}>{m.pct}%</div>
+                  <div style={{ fontSize:10, color:"var(--muted)" }}>{m.label}</div>
+                  <div style={{ fontSize:10, color:"var(--faint)" }}>{m.tasks}t</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display:"flex", gap:14, marginTop:10 }}>
+            {[["var(--blue-bd)","Task volume"],["var(--green)","Completion %"]].map(([c,l]) => (
+              <div key={l} style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, color:"var(--muted)" }}>
+                <div style={{ width:10, height:10, borderRadius:2, background:c }} />{l}
               </div>
             ))}
           </div>
@@ -1040,7 +1393,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
       {/* ── Carry-over section ── */}
       <CarryOverSection entries={entries} />
 
-      {/* ── Improvement 4: Filterable daily task history ── */}
+      {/* ── Filterable daily task history ── */}
       <TaskHistory entries={entries} />
 
       </> /* end profileTab === "overview" */}
