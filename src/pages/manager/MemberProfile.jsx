@@ -938,7 +938,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
       const lbl = d.toLocaleDateString("en-US", { month: "short" });
       const ents = entries.filter(e => e.date?.startsWith(key));
       const nrm  = ents.map(normaliseEntry);
-      const tks  = nrm.flatMap(e => e.tasks||[]).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing);
+      const tks  = nrm.flatMap(e => (e.tasks||[]).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing));
       const done = tks.filter(t => t.status==="Done"||t.outcome==="Done").length;
       const pct  = tks.length ? Math.round(done/tks.length*100) : 0;
       months.push({ label: lbl, pct, tasks: tks.length, days: ents.length });
