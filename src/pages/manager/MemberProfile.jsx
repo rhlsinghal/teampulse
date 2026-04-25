@@ -997,12 +997,17 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
       <button className="btn btn-ghost btn-sm mb-16" onClick={onBack}>← Back to overview</button>
 
       {/* ── Improvement 1: Rich header ── */}
-      <div className="card mb-12">
+      <div className="card mb-12" style={{ overflow:"hidden" }}>
+        <div style={{ height:3, background:"linear-gradient(90deg, var(--accent) 0%, var(--green) 100%)" }} />
         <div className="card-body" style={{ padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-            <div style={{ width: 52, height: 52, borderRadius: 12, background: color + "22", color,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 500, flexShrink: 0 }}>
-              {initials(memberName)}
+            <div style={{ position:"relative", flexShrink:0 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 12, background: color + "22", color,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 500 }}>
+                {initials(memberName)}
+              </div>
+              <div style={{ position:"absolute", bottom:-2, right:-2, width:11, height:11, borderRadius:"50%",
+                background:"var(--green)", border:"2px solid var(--surface)" }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
@@ -1055,14 +1060,13 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
                     </span>
                   )}
                   {todayPct != null && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-                      <span style={{ fontSize: 12, fontWeight: 500,
-                        color: todayPct === 100 ? "var(--green)" : "var(--accent)" }}>{todayPct}%</span>
-                      <div style={{ width: 60, height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${todayPct}%`, borderRadius: 2,
-                          background: todayPct === 100 ? "var(--green)" : "var(--accent)" }} />
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:"auto" }}>
+                      <div style={{ width:72, height:5, borderRadius:3, background:"var(--border)", overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${todayPct}%`, borderRadius:3,
+                          background: todayPct===100?"var(--green)":"var(--accent)" }} />
                       </div>
-                      <span style={{ fontSize: 10, color: "var(--faint)" }}>today</span>
+                      <span style={{ fontSize:11, fontWeight:500,
+                        color: todayPct===100?"var(--green)":"var(--accent)" }}>{todayPct}% today</span>
                     </div>
                   )}
                 </div>
@@ -1100,45 +1104,100 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
         const ytdNormed = entries.map(normaliseEntry);
         const ytdTasks  = ytdNormed.flatMap(e => (e.tasks||[]).filter(t => t.text?.trim() && !t.isRecurring && !e.eodMissing));
         const ytdDone   = ytdTasks.filter(t => t.status==="Done"||t.outcome==="Done").length;
+        const ytdCarry  = ytdTasks.filter(t => t.status==="Carry over"||t.outcome==="Carry over").length;
+        const ytdBlocked= ytdTasks.filter(t => t.status==="Blocked"||t.outcome==="Blocked").length;
         const ytdTotal  = ytdTasks.length;
         const ytdPct    = ytdTotal ? Math.round(ytdDone/ytdTotal*100) : 0;
         const ytdBlock  = ytdNormed.filter(e => e.blockers?.trim()).length;
         const ytdBwV    = ytdNormed.map(e=>e.bandwidth).filter(Boolean);
         const ytdAvgBw  = ytdBwV.length ? Math.round(ytdBwV.reduce((a,b)=>a+b,0)/ytdBwV.length) : 3;
-        const Row = ({ label, items }) => (
-          <div style={{ display:"grid", gridTemplateColumns:"100px repeat(5,minmax(0,1fr))", gap:0,
-            border:"0.5px solid var(--border)", borderRadius:8, overflow:"hidden", marginBottom:8 }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
-              background:"var(--bg)", borderRight:"0.5px solid var(--border)",
-              padding:"8px 10px", fontSize:10, fontWeight:500, textTransform:"uppercase",
-              letterSpacing:"0.06em", color:"var(--faint)", textAlign:"center" }}>
-              {label}
-            </div>
-            {items.map((m,i) => (
-              <div key={i} style={{ padding:"8px 6px", textAlign:"center", background:"var(--surface)",
-                borderLeft: i>0 ? "0.5px solid var(--border)" : "none" }}>
-                <div style={{ fontSize: m.small?14:20, fontWeight:500, color:m.color, lineHeight:1.1 }}>{m.val}</div>
-                <div style={{ fontSize:9, color:"var(--muted)", marginTop:3 }}>{m.label}</div>
+        const ytdEodDone= entries.filter(e => e.eod?.submittedAt).length;
+        const ytdEodTot = entries.filter(e => e.sod?.submittedAt).length;
+        const ytdEodPct = ytdEodTot ? Math.round(ytdEodDone/ytdEodTot*100) : 0;
+        const monthCarry= monthTasks.filter(t => t.status==="Carry over"||t.outcome==="Carry over").length;
+        const monthBlk2 = monthTasks.filter(t => t.status==="Blocked"||t.outcome==="Blocked").length;
+        const mEodPct   = monthWithSod.length ? Math.round(monthWithEod.length/monthWithSod.length*100) : 0;
+        const StatCard  = ({ title, subtitle, daysPill, stats, done, carry, blocked, total }) => {
+          const donePct  = total ? Math.round(done/total*100)  : 0;
+          const carryPct = total ? Math.round(carry/total*100) : 0;
+          const blkPct   = total ? Math.round(blocked/total*100): 0;
+          return (
+            <div className="card" style={{ marginBottom:0 }}>
+              <div className="card-header" style={{ background:"var(--surface)" }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:500 }}>{title}</div>
+                  <div style={{ fontSize:11, color:"var(--muted)", marginTop:1 }}>{subtitle}</div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:5, background:"var(--blue-bg)",
+                  padding:"4px 10px", borderRadius:20, border:"0.5px solid var(--blue-bd)" }}>
+                  <div style={{ width:6, height:6, borderRadius:"50%", background:"var(--accent)" }} />
+                  <span style={{ fontSize:11, color:"var(--blue)", fontWeight:500 }}>{daysPill}</span>
+                </div>
               </div>
-            ))}
-          </div>
-        );
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))" }}>
+                {stats.map((s, si) => (
+                  <div key={si} style={{ padding:"10px 8px", textAlign:"center",
+                    borderRight: si<4?"0.5px solid var(--border)":"none" }}>
+                    <div style={{ fontSize:s.small?14:20, fontWeight:500, color:s.color, lineHeight:1.1,
+                      paddingTop:s.small?4:0 }}>{s.val}</div>
+                    <div style={{ fontSize:10, color:"var(--muted)", marginTop:3 }}>{s.label}</div>
+                    <div style={{ fontSize:9, fontWeight:500, color:s.subColor||s.color, marginTop:1 }}>{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding:"8px 14px 10px", borderTop:"0.5px solid var(--border)" }}>
+                <div style={{ height:5, borderRadius:3, background:"var(--border)", overflow:"hidden", display:"flex", marginBottom:5 }}>
+                  <div style={{ width:`${donePct}%`, background:"var(--green)", borderRadius:"3px 0 0 3px" }} />
+                  <div style={{ width:`${carryPct}%`, background:"var(--amber)" }} />
+                  <div style={{ width:`${blkPct}%`, background:"var(--red)", borderRadius:"0 3px 3px 0" }} />
+                </div>
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
+                    <div style={{ width:7, height:7, borderRadius:2, background:"var(--green)" }} />Done ({done})
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
+                    <div style={{ width:7, height:7, borderRadius:2, background:"var(--amber)" }} />Carry ({carry})
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
+                    <div style={{ width:7, height:7, borderRadius:2, background:"var(--red)" }} />Blocked ({blocked})
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
         return (
-          <div style={{ marginBottom:12 }}>
-            <Row label="This month" items={[
-              { val: monthEntries.length, label:"Days submitted",  color:"var(--accent)" },
-              { val: `${monthPct}%`,      label:"Completion",      color:"var(--green)"  },
-              { val: monthTotal,          label:"Tasks tracked",   color:"var(--text)"   },
-              { val: monthBlockers.length,label:"Blockers",        color: monthBlockers.length>0?"var(--red)":"var(--green)" },
-              { val: BANDWIDTH[monthAvgBw]?.label||"—", label:"Avg bandwidth", color:BW_STYLES[monthAvgBw]?.color||"var(--muted)", small:true },
-            ]} />
-            <Row label="Year to date" items={[
-              { val: entries.length,  label:"Days submitted",  color:"var(--accent)" },
-              { val: `${ytdPct}%`,    label:"Completion",      color:"var(--green)"  },
-              { val: ytdTotal,        label:"Tasks tracked",   color:"var(--text)"   },
-              { val: ytdBlock,        label:"Blockers",        color: ytdBlock>0?"var(--red)":"var(--green)" },
-              { val: BANDWIDTH[ytdAvgBw]?.label||"—", label:"Avg bandwidth", color:BW_STYLES[ytdAvgBw]?.color||"var(--muted)", small:true },
-            ]} />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+            <StatCard
+              title="This month" subtitle={`${MONTHS[currentMonth]} ${currentYear}`}
+              daysPill={`${monthEntries.length} of ${new Date(currentYear,currentMonth+1,0).getDate()} days`}
+              done={monthDone} carry={monthCarry} blocked={monthBlk2} total={monthTotal}
+              stats={[
+                { val:`${monthPct}%`, label:"Completion", sub:`${monthDone} of ${monthTotal}`, color:"var(--green)" },
+                { val:monthTotal, label:"Tasks tracked", sub:"excl. recurring", color:"var(--text)", subColor:"var(--muted)" },
+                { val:monthBlockers.length, label:"Blockers", sub:monthBlockers.length>0?"raised":"clean month",
+                  color:monthBlockers.length>0?"var(--red)":"var(--green)" },
+                { val:BANDWIDTH[monthAvgBw]?.label||"—", label:"Bandwidth", sub:"avg this month",
+                  color:BW_STYLES[monthAvgBw]?.color||"var(--muted)", small:true },
+                { val:`${mEodPct}%`, label:"EOD rate", sub:`${monthWithEod.length} of ${monthWithSod.length}`,
+                  color:mEodPct>=90?"var(--green)":mEodPct>=70?"var(--amber)":"var(--red)" },
+              ]}
+            />
+            <StatCard
+              title="Year to date" subtitle={`Jan – ${MONTHS[currentMonth]} ${currentYear}`}
+              daysPill={`${entries.length} days`}
+              done={ytdDone} carry={ytdCarry} blocked={ytdBlocked} total={ytdTotal}
+              stats={[
+                { val:`${ytdPct}%`, label:"Completion", sub:`${ytdDone} of ${ytdTotal}`, color:"var(--green)" },
+                { val:ytdTotal, label:"Tasks tracked", sub:"excl. recurring", color:"var(--text)", subColor:"var(--muted)" },
+                { val:ytdBlock, label:"Blockers", sub:ytdBlock>0?"raised":"clean year",
+                  color:ytdBlock>0?"var(--red)":"var(--green)" },
+                { val:BANDWIDTH[ytdAvgBw]?.label||"—", label:"Bandwidth", sub:"avg this year",
+                  color:BW_STYLES[ytdAvgBw]?.color||"var(--muted)", small:true },
+                { val:`${ytdEodPct}%`, label:"EOD rate", sub:`${ytdEodDone} of ${ytdEodTot}`,
+                  color:ytdEodPct>=90?"var(--green)":ytdEodPct>=70?"var(--amber)":"var(--red)" },
+              ]}
+            />
           </div>
         );
       })()}
@@ -1300,9 +1359,8 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
         </div>
       </div>
 
-      {/* ── 2-column: compact activity calendar + bandwidth pattern ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
-        {/* Compact activity calendar */}
+      {/* ── 3-column: activity + bandwidth + 6-month trend ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
         <div className="card" style={{ marginBottom:0 }}>
           <div className="card-header" style={{ padding:"7px 12px" }}>
             <span className="card-title">Activity</span>
@@ -1334,19 +1392,19 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
                   const blk = blockerDates.includes(iso);
                   const fut = iso > TODAY;
                   return (
-                    <div key={i} style={{ aspectRatio:"1", borderRadius:3, fontSize:9, color:"var(--faint)",
+                    <div key={i} style={{ width:22, height:22, borderRadius:3, fontSize:9, color:"var(--faint)",
                       display:"flex", alignItems:"center", justifyContent:"center",
-                      background: fut?"transparent":has?(blk?"var(--red-bg)":"#5b5ff540"):"var(--bg)",
-                      border: fut?"none":has?(blk?"0.5px solid var(--red-bd)":"none"):"0.5px solid var(--border)" }}>
+                      background: fut?"transparent":has?(blk?"var(--red-bg)":"var(--blue-bg)"):"var(--bg)",
+                      border: fut?"none":has?(blk?"0.5px solid var(--red-bd)":"0.5px solid var(--blue-bd)"):"0.5px solid var(--border)" }}>
                       {d}
                     </div>
                   );
                 });
               })()}
             </div>
-            <div style={{ display:"flex", gap:10, marginTop:6 }}>
+            <div style={{ display:"flex", gap:8, marginTop:6, flexWrap:"wrap" }}>
               <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
-                <div style={{ width:8, height:8, borderRadius:2, background:"#5b5ff540" }} />Submitted
+                <div style={{ width:8, height:8, borderRadius:2, background:"var(--blue-bg)", border:"0.5px solid var(--blue-bd)" }} />Submitted
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
                 <div style={{ width:8, height:8, borderRadius:2, background:"var(--red-bg)", border:"0.5px solid var(--red-bd)" }} />Blocker
@@ -1354,29 +1412,27 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
             </div>
           </div>
         </div>
-
-        {/* Bandwidth pattern */}
         <div className="card" style={{ marginBottom:0 }}>
           <div className="card-header" style={{ padding:"7px 12px" }}>
             <span className="card-title">Bandwidth pattern</span>
-            <span className="card-meta">per day this month</span>
+            <span className="card-meta">per day</span>
           </div>
           <div className="card-body" style={{ padding:"10px 12px" }}>
             {bwPattern.length === 0 ? (
               <div style={{ fontSize:12, color:"var(--faint)", textAlign:"center", padding:"20px 0" }}>No data</div>
             ) : (
               <>
-                <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:72, marginBottom:8 }}>
+                <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:80, marginBottom:8 }}>
                   {bwPattern.map((p,i) => {
                     const h = p.bw===3?35:p.bw===4?55:p.bw===5?75:35;
                     const c = p.bw===3?"var(--green)":p.bw===4?"var(--amber)":"var(--red)";
-                    return <div key={i} style={{ flex:1, height:`${h}%`, background:c, borderRadius:"2px 2px 0 0", minWidth:4 }} />;
+                    return <div key={i} style={{ flex:1, height:`${h}%`, background:c, borderRadius:"2px 2px 0 0", minWidth:3 }} />;
                   })}
                 </div>
-                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
                   {[["var(--green)","Balanced"],["var(--amber)","Heavy"],["var(--red)","Overloaded"]].map(([c,l]) => (
-                    <div key={l} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--muted)" }}>
-                      <div style={{ width:8, height:8, borderRadius:2, background:c }} />{l}
+                    <div key={l} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--muted)" }}>
+                      <div style={{ width:8, height:8, borderRadius:2, background:c, flexShrink:0 }} />{l}
                     </div>
                   ))}
                 </div>
@@ -1384,43 +1440,45 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
             )}
           </div>
         </div>
-      </div>
-
-      {/* ── 6-month trend ── */}
-      <div className="card mb-12">
-        <div className="card-header" style={{ padding:"7px 12px" }}>
-          <span className="card-title">6-month trend</span>
-          <span className="card-meta">completion % and task volume</span>
-        </div>
-        <div className="card-body" style={{ padding:"10px 14px" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(6,minmax(0,1fr))", gap:8 }}>
-            {sixMonthTrend.map((m,i) => {
-              const maxT = Math.max(...sixMonthTrend.map(x=>x.tasks), 1);
-              const col  = m.pct>=85?"var(--green)":m.pct>=70?"var(--amber)":"var(--red)";
-              return (
-                <div key={i} style={{ textAlign:"center" }}>
-                  <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"center", gap:3, height:60, marginBottom:5 }}>
-                    <div style={{ width:13, height:`${Math.max(m.tasks/maxT*60,4)}px`, background:"var(--blue-bd)", borderRadius:"2px 2px 0 0" }} />
-                    <div style={{ width:13, height:`${Math.max(m.pct/100*60,4)}px`, background:col, borderRadius:"2px 2px 0 0" }} />
+        <div className="card" style={{ marginBottom:0 }}>
+          <div className="card-header" style={{ padding:"7px 12px" }}>
+            <span className="card-title">6-month trend</span>
+          </div>
+          <div className="card-body" style={{ padding:"10px 12px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(6,minmax(0,1fr))", gap:4, height:80, marginBottom:8, alignItems:"end" }}>
+              {sixMonthTrend.map((m,i) => {
+                const maxT  = Math.max(...sixMonthTrend.map(x=>x.tasks), 1);
+                const col   = m.pct>=85?"var(--green)":m.pct>=70?"var(--amber)":"var(--red)";
+                const isLast= i===sixMonthTrend.length-1;
+                return (
+                  <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center",
+                    justifyContent:"flex-end", height:"100%", gap:2 }}>
+                    <div style={{ display:"flex", alignItems:"flex-end", gap:2 }}>
+                      <div style={{ width:10, height:`${Math.max(m.tasks/maxT*56,3)}px`,
+                        background:isLast?"var(--blue-bg)":"var(--blue-bd)",
+                        borderRadius:"2px 2px 0 0", border:isLast?"1px solid var(--blue-bd)":"none" }} />
+                      <div style={{ width:10, height:`${Math.max(m.pct/100*56,3)}px`,
+                        background:col, borderRadius:"2px 2px 0 0", opacity:isLast?1:0.8 }} />
+                    </div>
+                    <div style={{ fontSize:11, fontWeight:500, color:col }}>{m.pct}%</div>
+                    <div style={{ fontSize:10, color:"var(--muted)" }}>{m.label}</div>
                   </div>
-                  <div style={{ fontSize:11, fontWeight:500, color:col }}>{m.pct}%</div>
-                  <div style={{ fontSize:10, color:"var(--muted)" }}>{m.label}</div>
-                  <div style={{ fontSize:10, color:"var(--faint)" }}>{m.tasks}t</div>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ display:"flex", gap:14, marginTop:10 }}>
-            {[["var(--blue-bd)","Task volume"],["var(--green)","Completion %"]].map(([c,l]) => (
-              <div key={l} style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, color:"var(--muted)" }}>
-                <div style={{ width:10, height:10, borderRadius:2, background:c }} />{l}
+                );
+              })}
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--muted)" }}>
+                <div style={{ width:8, height:8, borderRadius:2, background:"var(--blue-bd)", flexShrink:0 }} />Tasks
               </div>
-            ))}
+              <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--muted)" }}>
+                <div style={{ width:8, height:8, borderRadius:2, background:"var(--green)", opacity:0.8, flexShrink:0 }} />Completion %
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── Carry-over section ── */}
+            {/* ── Carry-over section ── */}
       <CarryOverSection entries={entries} />
 
       {/* ── Filterable daily task history ── */}
