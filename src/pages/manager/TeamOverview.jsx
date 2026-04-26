@@ -12,10 +12,11 @@ const PRIORITY_STYLE = {
 
 // Chip colour by EOD outcome (or SOD-only = blue = in progress)
 function chipStyle(outcome) {
-  if (outcome === "Done")       return { bg: "var(--green-bg)", bd: "var(--green-bd)", dot: "var(--green)",  text: "var(--green)"  };
-  if (outcome === "Carry over") return { bg: "var(--amber-bg)", bd: "var(--amber-bd)", dot: "var(--amber)",  text: "var(--amber)"  };
-  if (outcome === "Blocked")    return { bg: "var(--red-bg)",   bd: "var(--red-bd)",   dot: "var(--red)",    text: "var(--red)"    };
-  // SOD-only / in progress
+  if (outcome === "Done")        return { bg: "var(--green-bg)", bd: "var(--green-bd)", dot: "var(--green)",  text: "var(--green)"  };
+  if (outcome === "Carry over")  return { bg: "var(--amber-bg)", bd: "var(--amber-bd)", dot: "var(--amber)",  text: "var(--amber)"  };
+  if (outcome === "Blocked")     return { bg: "var(--red-bg)",   bd: "var(--red-bd)",   dot: "var(--red)",    text: "var(--red)"    };
+  if (outcome === "In Progress") return { bg: "var(--blue-bg)",  bd: "var(--blue-bd)",  dot: "var(--blue)",   text: "var(--blue)"   };
+  // SOD-only / null
   return { bg: "var(--surface)", bd: "var(--border)", dot: "var(--blue)", text: "var(--muted)" };
 }
 
@@ -25,27 +26,71 @@ function fmtTime(ts) {
 }
 
 // ── Task chip ─────────────────────────────────────────────────────────────────
+// Client → consistent colour mapping
+const CLIENT_COLORS = {};
+const CLIENT_PALETTES = [
+  { bg:"#E6F1FB", bd:"#85B7EB", text:"#0C447C" },
+  { bg:"#E1F5EE", bd:"#5DCAA5", text:"#085041" },
+  { bg:"#EEEDFE", bd:"#AFA9EC", text:"#3C3489" },
+  { bg:"#FFF3E0", bd:"#FFB74D", text:"#7C4A00" },
+  { bg:"#FCE4EC", bd:"#F48FB1", text:"#6A0020" },
+  { bg:"#E8F5E9", bd:"#81C784", text:"#1B5E20" },
+];
+function clientColor(client) {
+  if (!client) return null;
+  if (!CLIENT_COLORS[client]) {
+    const keys = Object.keys(CLIENT_COLORS);
+    CLIENT_COLORS[client] = CLIENT_PALETTES[keys.length % CLIENT_PALETTES.length];
+  }
+  return CLIENT_COLORS[client];
+}
+
 function TaskChip({ task }) {
-  const { bg, bd, dot, text } = chipStyle(task.outcome);
+  const { bg, bd, dot } = chipStyle(task.outcome);
   const isBlocked   = task.outcome === "Blocked";
   const isRecurring = task.isRecurring === true;
+  const cc          = clientColor(task.client);
+
+  if (isRecurring) return null; // recurring collapsed separately in MemberRow
+
+  if (task.client && cc) {
+    // Two-tone chip: coloured client badge | task text + outcome symbol
+    const symbol = task.outcome === "Done" ? "✓"
+                 : task.outcome === "Carry over" ? "↻"
+                 : task.outcome === "Blocked" ? "⚑"
+                 : task.outcome === "In Progress" ? "…"
+                 : "";
+    return (
+      <div style={{ display:"flex", alignItems:"center", borderRadius:6,
+        overflow:"hidden", border:`0.5px solid ${cc.bd}`, flexShrink:0 }}>
+        <span style={{ fontSize:10, fontWeight:500, padding:"3px 6px",
+          background:cc.bg, color:cc.text, borderRight:`0.5px solid ${cc.bd}`,
+          whiteSpace:"nowrap" }}>
+          {task.client}
+        </span>
+        <span style={{ fontSize:10, color:"var(--text)", padding:"3px 7px",
+          background:bg, whiteSpace:"nowrap", maxWidth:160,
+          overflow:"hidden", textOverflow:"ellipsis" }}>
+          {task.text}
+        </span>
+        {symbol && (
+          <span style={{ fontSize:10, fontWeight:500, padding:"3px 5px 3px 0",
+            background:bg, color:dot, whiteSpace:"nowrap" }}>
+            {symbol}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // No client — plain chip
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 4,
-      background: isRecurring ? "#EEEDFE20" : bg,
-      border: `0.5px solid ${isRecurring ? "#AFA9EC" : bd}`,
-      borderRadius: 6, padding: "3px 8px", flexShrink: 0,
-    }}>
-      {isRecurring
-        ? <span style={{ fontSize: 9, color: "#534AB7", flexShrink: 0 }}>↻</span>
-        : <div style={{ width: 5, height: 5, borderRadius: "50%", background: dot, flexShrink: 0 }} />}
-      {task.client && (
-        <span style={{ fontSize: 10, color: isRecurring ? "#534AB7" : text, fontWeight: 500, whiteSpace: "nowrap" }}>{task.client}</span>
-      )}
-      <span style={{
-        fontSize: 10, color: isRecurring ? "#534AB7" : text, whiteSpace: "nowrap",
-        maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis",
-      }}>
+    <div style={{ display:"flex", alignItems:"center", gap:4,
+      background:bg, border:`0.5px solid ${bd}`, borderRadius:6,
+      padding:"3px 8px", flexShrink:0 }}>
+      <div style={{ width:5, height:5, borderRadius:"50%", background:dot, flexShrink:0 }} />
+      <span style={{ fontSize:10, color:"var(--muted)", whiteSpace:"nowrap",
+        maxWidth:160, overflow:"hidden", textOverflow:"ellipsis" }}>
         {task.text}{isBlocked ? " ⚑" : ""}
       </span>
     </div>
@@ -88,6 +133,17 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
   const pct        = eodSubmitted && total ? Math.round(done / total * 100) : null;
   const pctColor   = pct === 100 ? "var(--green)" : pct != null && pct > 50 ? "var(--accent)" : "var(--amber)";
 
+  // Status-based left border colour
+  const borderColor = !hasToday          ? "var(--border)"
+                    : hasBlocker         ? "var(--red)"
+                    : eodSubmitted && pct === 100 ? "var(--green)"
+                    : eodSubmitted       ? "var(--accent)"
+                    : sodSubmitted       ? "var(--amber)"
+                    : "var(--border)";
+
+  // Count recurring tasks
+  const recurringCount = valid.filter(t => t.isRecurring).length;
+
   return (
     <div
       onClick={() => onViewProfile(member.name)}
@@ -95,9 +151,10 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
         display: "grid",
         gridTemplateColumns: "220px 1fr 72px",
         borderBottom: isLast ? "none" : "0.5px solid var(--border)",
-        background: !hasToday ? "var(--amber-bg)" : "transparent",
+        background: !hasToday ? "var(--amber-bg)" : hasBlocker ? "var(--red-bg)" : "transparent",
         cursor: "pointer",
         transition: "background 0.1s",
+        borderLeft: `3px solid ${borderColor}`,
       }}>
 
       {/* ── Left: identity ── */}
@@ -107,10 +164,19 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
         display: "flex", flexDirection: "column", justifyContent: "center", gap: 6,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: color + "22", color,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 500, flexShrink: 0 }}>
-            {initials(member.name)}
+          <div style={{ position:"relative", flexShrink:0 }}>
+            <div style={{ width:30, height:30, borderRadius:8, background:color+"22", color,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:11, fontWeight:500 }}>
+              {initials(member.name)}
+            </div>
+            <div style={{ position:"absolute", bottom:-1, right:-1, width:8, height:8,
+              borderRadius:"50%", border:"1.5px solid var(--surface)",
+              background: !hasToday ? "var(--border)"
+                : hasBlocker ? "var(--red)"
+                : eodSubmitted ? "var(--green)"
+                : sodSubmitted ? "var(--amber)"
+                : "var(--border)" }} />
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 500,
@@ -148,15 +214,22 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
         display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5,
       }}>
         {!hasToday ? (
-          <span style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic" }}>
+          <span style={{ fontSize:11, color:"var(--faint)", fontStyle:"italic" }}>
             Last entry: {entry ? fmt(entry.date) : "never"}
           </span>
         ) : valid.length > 0 ? (
           <>
-            {valid.map((t, i) => <TaskChip key={i} task={t} />)}
+            {valid.filter(t => !t.isRecurring).map((t, i) => <TaskChip key={i} task={t} />)}
+            {recurringCount > 0 && (
+              <span style={{ display:"inline-flex", alignItems:"center", gap:3, fontSize:9,
+                padding:"2px 7px", borderRadius:20, whiteSpace:"nowrap",
+                background:"#EEEDFE20", color:"#534AB7", border:"0.5px solid #AFA9EC" }}>
+                ↻ {recurringCount} recurring
+              </span>
+            )}
           </>
         ) : (
-          <span style={{ fontSize: 11, color: "var(--faint)", fontStyle: "italic" }}>No tasks recorded</span>
+          <span style={{ fontSize:11, color:"var(--faint)", fontStyle:"italic" }}>No tasks recorded</span>
         )}
       </div>
 
@@ -168,26 +241,20 @@ function MemberRow({ member, entry, onViewProfile, isLast }) {
         alignItems: "center", justifyContent: "center", gap: 2,
         minWidth: 72,
       }}>
-        {pct != null ? (
+        {!hasToday ? (
+          <span style={{ fontSize:20, fontWeight:500, color:"var(--faint)", lineHeight:1 }}>—</span>
+        ) : eodSubmitted && pct != null ? (
           <>
-            <div style={{ fontSize: 22, fontWeight: 500, color: pctColor, lineHeight: 1 }}>{pct}%</div>
-            <div style={{ fontSize: 9, color: "var(--faint)" }}>{done} of {total}</div>
+            <div style={{ fontSize:22, fontWeight:500, color:pctColor, lineHeight:1 }}>{pct}%</div>
+            <div style={{ fontSize:9, color:"var(--faint)" }}>{done} of {total}</div>
           </>
-        ) : hasToday && total > 0 ? (
+        ) : sodSubmitted && total > 0 ? (
           <>
-            <div style={{ fontSize: 12, fontWeight: 500, color: "var(--blue)", lineHeight: 1 }}>{total}</div>
-            <div style={{ fontSize: 9, color: "var(--faint)" }}>project</div>
+            <div style={{ fontSize:14, fontWeight:500, color:"var(--blue)", lineHeight:1 }}>{total}t</div>
+            <div style={{ fontSize:9, color:"var(--faint)" }}>EOD pending</div>
           </>
-        ) : hasToday ? (
-          <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>
         ) : (
-          <button
-            onClick={e => { e.stopPropagation(); }}
-            style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6,
-              border: "0.5px solid var(--amber-bd)", background: "transparent",
-              color: "var(--amber)", cursor: "pointer", fontFamily: "inherit" }}>
-            Remind
-          </button>
+          <span style={{ fontSize:11, color:"var(--faint)" }}>—</span>
         )}
       </div>
     </div>
