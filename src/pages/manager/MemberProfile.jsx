@@ -164,7 +164,7 @@ function TodaySection({ entry }) {
                 const overdue = t.dueDate && t.dueDate < TODAY && t.outcome !== "Done";
                 return (
                   <tr key={i} style={{ background: t.outcome === "Blocked" ? "var(--red-bg)" : t.adhoc ? "#fffbeb" : "transparent" }}>
-                    <td><ClientPill client={t.client} /></td>
+                    <td style={{ whiteSpace:"nowrap" }}><ClientPill client={t.client} /></td>
                     <td><PriorityPill priority={t.priority} /></td>
                     <td style={{ fontSize: 12, fontWeight: 500 }}>
                       {t.isRecurring && (
@@ -407,7 +407,7 @@ function CarryOverSection({ entries }) {
                   return (
                     <tr key={i} style={{ borderTop:"0.5px solid var(--border)",
                       background: isBlocked ? "var(--red-bg)" : "transparent" }}>
-                      <td style={{ padding:"8px 12px" }}><ClientPill client={t.client} /></td>
+                      <td style={{ padding:"8px 12px", whiteSpace:"nowrap" }}><ClientPill client={t.client} /></td>
                       <td style={{ padding:"8px 12px" }}><PriorityPill priority={t.priority} /></td>
                       <td style={{ padding:"8px 12px" }}>
                         <div style={{ fontSize:12, fontWeight:500 }}>{t.text}</div>
@@ -474,7 +474,7 @@ function CarryOverSection({ entries }) {
                 {completed.map((t, i) => (
                   <tr key={i} style={{ borderTop:"0.5px solid var(--border)",
                     background: i%2===1 ? "var(--bg)" : "transparent" }}>
-                    <td style={{ padding:"7px 12px" }}><ClientPill client={t.client} /></td>
+                    <td style={{ padding:"7px 12px", whiteSpace:"nowrap" }}><ClientPill client={t.client} /></td>
                     <td style={{ padding:"7px 12px" }}><PriorityPill priority={t.priority} /></td>
                     <td style={{ padding:"7px 12px", fontSize:12, fontWeight:500 }}>{t.text}</td>
                     <td style={{ padding:"7px 12px", fontSize:11,
@@ -744,16 +744,25 @@ function TaskHistory({ entries }) {
     <div className="card mt-12">
       <div className="card-header" style={{ flexWrap:"wrap", gap:8 }}>
         <span className="card-title">Daily task history</span>
-        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-          <FP active={outcomeFilter==="all"} onClick={() => setOutcomeFilter("all")}>All</FP>
-          {outcomes.map(o => (
-            <FP key={o} active={outcomeFilter===o} onClick={() => setOutcomeFilter(o)}>{o}</FP>
-          ))}
-          <div style={{ width:"0.5px", background:"var(--border)", margin:"0 2px" }} />
-          <FP active={clientFilter==="all"} onClick={() => setClientFilter("all")}>All clients</FP>
-          {clients.map(c => (
-            <FP key={c} active={clientFilter===c} onClick={() => setClientFilter(c)}>{c}</FP>
-          ))}
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <span style={{ fontSize:11, color:"var(--faint)" }}>Outcome</span>
+            <select value={outcomeFilter} onChange={e => setOutcomeFilter(e.target.value)}
+              style={{ fontSize:11, padding:"4px 8px", borderRadius:6, border:"0.5px solid var(--border)",
+                background:"var(--surface)", color:"var(--text)", fontFamily:"inherit", cursor:"pointer" }}>
+              <option value="all">All</option>
+              {outcomes.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <span style={{ fontSize:11, color:"var(--faint)" }}>Client</span>
+            <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+              style={{ fontSize:11, padding:"4px 8px", borderRadius:6, border:"0.5px solid var(--border)",
+                background:"var(--surface)", color:"var(--text)", fontFamily:"inherit", cursor:"pointer" }}>
+              <option value="all">All clients</option>
+              {clients.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
       </div>
       {filtered.length === 0
@@ -778,7 +787,7 @@ function TaskHistory({ entries }) {
                 return (
                   <tr key={i} style={{ background: t._eodMissing ? "var(--bg)" : "transparent" }}>
                     <td style={{ fontFamily:"JetBrains Mono, monospace", fontSize:11, color:"var(--muted)", whiteSpace:"nowrap" }}>{fmt(t.date)}</td>
-                    <td><ClientPill client={t.client} /></td>
+                    <td style={{ whiteSpace:"nowrap" }}><ClientPill client={t.client} /></td>
                     <td><PriorityPill priority={t.priority} /></td>
                     <td style={{ fontSize:12 }}>{t.text}</td>
                     <td style={{ fontSize:11, fontFamily:"JetBrains Mono, monospace", color:"var(--muted)", whiteSpace:"nowrap" }}>{t.startDate||"—"}</td>
@@ -1375,12 +1384,12 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
             </div>
           </div>
           <div className="card-body" style={{ padding:"8px 12px" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,minmax(0,22px))", gap:2, marginBottom:2, justifyContent:"start" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:3 }}>
               {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
                 <div key={d} style={{ textAlign:"center", fontSize:9, color:"var(--faint)" }}>{d}</div>
               ))}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,minmax(0,22px))", gap:2, justifyContent:"start" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
               {(() => {
                 const cells = [];
                 for (let i = 0; i < getFirstDayOfMonth(calYear,calMonth); i++) cells.push(null);
@@ -1392,7 +1401,7 @@ export default function MemberProfile({ memberName, memberRecord, onBack }) {
                   const blk = blockerDates.includes(iso);
                   const fut = iso > TODAY;
                   return (
-                    <div key={i} style={{ width:22, height:22, borderRadius:3, fontSize:9, color:"var(--faint)",
+                    <div key={i} style={{ aspectRatio:"1", borderRadius:4, fontSize:9, color:"var(--faint)",
                       display:"flex", alignItems:"center", justifyContent:"center",
                       background: fut?"transparent":has?(blk?"var(--red-bg)":"var(--blue-bg)"):"var(--bg)",
                       border: fut?"none":has?(blk?"0.5px solid var(--red-bd)":"0.5px solid var(--blue-bd)"):"0.5px solid var(--border)" }}>
