@@ -199,7 +199,9 @@ export default function TodayUpdate({ memberName }) {
       // No SOD today — check yesterday's EOD for carry-over tasks
       const yesterday = entries.find(e => e.date !== TODAY && e.eod?.tasks?.length);
       if (yesterday) {
-        const carryOvers = (yesterday.eod.tasks || []).filter(t => t.outcome === "Carry over" || t.carryOver);
+        const carryOvers = (yesterday.eod.tasks || []).filter(t =>
+          t.outcome === "Carry over" || t.outcome === "In Progress" || t.carryOver
+        );
         if (carryOvers.length) {
           setSODForm(f => ({
             ...f,
