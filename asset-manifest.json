@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/teampulse/static/css/main.a1dacbbc.css",
-    "main.js": "/teampulse/static/js/main.956b776c.js",
+    "main.css": "/teampulse/static/css/main.8dbf90d6.css",
+    "main.js": "/teampulse/static/js/main.99316063.js",
     "index.html": "/teampulse/index.html",
-    "main.a1dacbbc.css.map": "/teampulse/static/css/main.a1dacbbc.css.map",
-    "main.956b776c.js.map": "/teampulse/static/js/main.956b776c.js.map"
+    "main.8dbf90d6.css.map": "/teampulse/static/css/main.8dbf90d6.css.map",
+    "main.99316063.js.map": "/teampulse/static/js/main.99316063.js.map"
   },
   "entrypoints": [
-    "static/css/main.a1dacbbc.css",
-    "static/js/main.956b776c.js"
+    "static/css/main.8dbf90d6.css",
+    "static/js/main.99316063.js"
   ]
 }
